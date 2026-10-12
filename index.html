@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فزعة | صندوق الطوارئ الأكاديمي</title>
+    <!-- Google Fonts: Cairo -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-navy: #0B192C;
+            --secondary-navy: #1E3E62;
+            --accent-gold: #FFD700;
+            --accent-yellow: #FFC107;
+            --bg-light: #F4F6F9;
+            --surface-white: #FFFFFF;
+            --text-dark: #1E293B;
+            --text-muted: #64748B;
+            --border-color: #E2E8F0;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 25px rgba(11, 25, 44, 0.12);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 16px;
+        }
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--surface-white);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        /* Header Styling */
+        header {
+            background: linear-gradient(135deg, var(--primary-navy), var(--secondary-navy));
+            color: var(--surface-white);
+            padding: 32px 24px 24px;
+            text-align: center;
+            position: relative;
+            border-bottom: 4px solid var(--accent-gold);
+        }
+        .logo-box {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 8px 18px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            margin-bottom: 12px;
+        }
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--surface-white);
+            letter-spacing: -0.5px;
+        }
+        .lightning-icon {
+            color: var(--accent-gold);
+            font-size: 1.4rem;
+        }
+        header p {
+            color: #CBD5E1;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        /* Content Container */
+        .content {
+            padding: 24px 20px;
+        }
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
