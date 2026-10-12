@@ -4,95 +4,125 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>فزعة | صندوق الطوارئ الأكاديمي</title>
-    <!-- Google Fonts: Cairo -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary-navy: #0B192C;
-            --secondary-navy: #1E3E62;
-            --accent-gold: #FFD700;
-            --accent-yellow: #FFC107;
-            --bg-light: #F4F6F9;
-            --surface-white: #FFFFFF;
-            --text-dark: #1E293B;
-            --text-muted: #64748B;
-            --border-color: #E2E8F0;
-            --radius-lg: 16px;
-            --radius-md: 10px;
-            --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
-            --shadow-lg: 0 10px 25px rgba(11, 25, 44, 0.12);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Cairo', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body {
-            background-color: var(--bg-light);
-            color: var(--text-dark);
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 16px;
-        }
-        .app-container {
-            width: 100%;
-            max-width: 480px;
-            background: var(--surface-white);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-lg);
-            overflow: hidden;
-            margin: 0 auto;
-            position: relative;
-        }
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-        /* Header Styling */
-        header {
-            background: linear-gradient(135deg, var(--primary-navy), var(--secondary-navy));
-            color: var(--surface-white);
-            padding: 32px 24px 24px;
-            text-align: center;
-            position: relative;
-            border-bottom: 4px solid var(--accent-gold);
-        }
-        .logo-box {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background: rgba(255, 255, 255, 0.08);
-            padding: 8px 18px;
-            border-radius: 50px;
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            margin-bottom: 12px;
-        }
-        .logo-text {
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: var(--surface-white);
-            letter-spacing: -0.5px;
-        }
-        .lightning-icon {
-            color: var(--accent-gold);
-            font-size: 1.4rem;
-        }
-        header p {
-            color: #CBD5E1;
-            font-size: 0.95rem;
-            font-weight: 600;
-        }
+<div class="app-container">
 
-        /* Content Container */
-        .content {
-            padding: 24px 20px;
-        }
-        .section-title {
-            font-size: 1.15rem;
-            font-weight: 700;
+    <header>
+        <div class="logo-box">
+            <span class="lightning-icon">⚡</span>
+            <span class="logo-text">صندوق فزعة</span>
+        </div>
+        <p>فزعتك وقت الزنقة!</p>
+    </header>
+
+    <div class="content">
+
+        <!-- STEP 1: Available Tools -->
+        <div id="step-tools" class="step-panel active">
+            <h2 class="section-title">الأدوات المتاحة للحجز</h2>
+            <div class="tools-grid">
+                <div class="tool-card">
+                    <div class="tool-info">
+                        <h3>آلة حاسبة علمية (Casio)</h3>
+                        <p class="tool-price">السعر: <span>300 بيسة / للساعة</span></p>
+                    </div>
+                    <button class="btn btn-accent" onclick="selectTool('آلة حاسبة علمية (Casio)', '300 بيسة/ساعة')">احجز الآن</button>
+                </div>
+                <div class="tool-card">
+                    <div class="tool-info">
+                        <h3>وصلة Type-C</h3>
+                        <p class="tool-price">السعر: <span>200 بيسة / للساعة</span></p>
+                    </div>
+                    <button class="btn btn-accent" onclick="selectTool('وصلة Type-C', '200 بيسة/ساعة')">احجز الآن</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: Rental Form -->
+        <div id="step-form" class="step-panel">
+            <div class="panel-header">
+                <h2 class="section-title">بيانات الاستئجار</h2>
+                <button class="btn-back" onclick="goToStep('step-tools')">→ عودة</button>
+            </div>
+            <form id="rentalForm" onsubmit="handleFormSubmit(event)">
+                <div class="form-group">
+                    <label>الأداة المختارة</label>
+                    <input type="text" id="selectedToolDisplay" class="form-control selected-tool-input" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="studentName">اسم الطالب ثلاثي</label>
+                    <input type="text" id="studentName" class="form-control" placeholder="أدخل اسمك الكامل" required>
+                </div>
+                <div class="form-group">
+                    <label for="universityId">الرقم الجامعي</label>
+                    <input type="text" id="universityId" class="form-control" placeholder="مثال: 123456" required>
+                </div>
+                <div class="form-group">
+                    <label for="phoneNumber">رقم الهاتف (واتساب)</label>
+                    <input type="tel" id="phoneNumber" class="form-control" placeholder="مثال: 91234567" required>
+                </div>
+                <div class="form-group">
+                    <label for="duration">مدة الاستئجار</label>
+                    <select id="duration" class="form-control" required>
+                        <option value="" disabled selected>اختر المدة</option>
+                        <option value="ساعة واحدة">ساعة واحدة</option>
+                        <option value="ساعتان">ساعتان</option>
+                        <option value="3 ساعات">3 ساعات</option>
+                        <option value="يوم كامل">يوم كامل</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="idCardImage">صورة البطاقة الجامعية</label>
+                    <input type="file" id="idCardImage" class="form-control" accept="image/*" required>
+                </div>
+                <button type="submit" class="btn btn-block mt-20">انتقال للدفع</button>
+            </form>
+        </div>
+
+        <!-- STEP 3: Payment -->
+        <div id="step-payment" class="step-panel">
+            <div class="panel-header">
+                <h2 class="section-title">تحويل المبلغ</h2>
+                <button class="btn-back" onclick="goToStep('step-form')">→ عودة</button>
+            </div>
+            <div class="payment-info">
+                <p>يرجى تحويل المبلغ المخصص عبر أحد الحسابات التالية:</p>
+                <p><strong>بنك مسقط:</strong> <span class="account-number">0315012345678</span></p>
+                <p><strong>ثواني (Thawani):</strong> <span class="account-number">91234567</span></p>
+            </div>
+            <form id="paymentForm" onsubmit="handlePaymentSubmit(event)">
+                <div class="form-group">
+                    <label for="receiptImage">إرفاق إيصال الدفع</label>
+                    <input type="file" id="receiptImage" class="form-control" accept="image/*" required>
+                </div>
+                <button type="submit" class="btn btn-accent btn-block mt-24">تأكيد الحجز</button>
+            </form>
+        </div>
+
+        <!-- STEP 4: Success / PIN -->
+        <div id="step-success" class="step-panel">
+            <div class="success-card">
+                <h2>تم تأكيد حجزك بنجاح! 🎉</h2>
+                <p>استخدم الرمز التالي لفتح الصندوق واستلام الأداة:</p>
+                <div class="pin-container">
+                    <div class="pin-label">رمز فتح الصندوق</div>
+                    <div class="pin-code" id="pinDisplay">----</div>
+                </div>
+                <button class="btn btn-whatsapp btn-block" onclick="sendToWhatsApp()">
+                    احفظ بيانات حجزك عبر واتساب 📲
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
