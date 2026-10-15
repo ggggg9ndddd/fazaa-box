@@ -3,13 +3,13 @@
 //  انسخها من: Firebase Console > Project settings > Your apps > Web app
 // =====================================================================
 const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  databaseURL: "",        // مهم: رابط Realtime Database (ينتهي بـ firebaseio.com أو firebasedatabase.app)
-  projectId: "",
+  apiKey: "",            // ← انسخه من Project settings > Your apps
+  authDomain: "fazza-33661.firebaseapp.com",
+  databaseURL: "https://fazza-33661-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "fazza-33661",
   storageBucket: "",
   messagingSenderId: "",
-  appId: ""
+  appId: ""              // ← انسخه من Project settings > Your apps
 };
 
 // الحسابات التي يحوّل لها الطالب المبلغ (تظهر في صفحة الدفع)
