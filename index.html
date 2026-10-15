@@ -19,110 +19,125 @@
             <span class="logo-text">صندوق فزعة</span>
         </div>
         <p>فزعتك وقت الزنقة!</p>
+        <div class="box-status" id="boxStatus"><span class="dot"></span><span class="txt">جارٍ التحقق من الصندوق…</span></div>
     </header>
 
     <div class="content">
 
-        <!-- STEP 1: Available Tools -->
-        <div id="step-tools" class="step-panel active">
-            <h2 class="section-title">الأدوات المتاحة للحجز</h2>
-            <div class="tools-grid">
-                <div class="tool-card">
-                    <div class="tool-info">
-                        <h3>آلة حاسبة علمية (Casio)</h3>
-                        <p class="tool-price">السعر: <span>300 بيسة / للساعة</span></p>
-                    </div>
-                    <button class="btn btn-accent" onclick="selectTool('آلة حاسبة علمية (Casio)', '300 بيسة/ساعة')">احجز الآن</button>
-                </div>
-                <div class="tool-card">
-                    <div class="tool-info">
-                        <h3>وصلة Type-C</h3>
-                        <p class="tool-price">السعر: <span>200 بيسة / للساعة</span></p>
-                    </div>
-                    <button class="btn btn-accent" onclick="selectTool('وصلة Type-C', '200 بيسة/ساعة')">احجز الآن</button>
-                </div>
+        <!-- تحميل -->
+        <div id="view-loading" class="view active"><div class="loader"></div></div>
+
+        <!-- إعدادات Firebase غير مكتملة -->
+        <div id="view-setup" class="view">
+            <div class="banner banner-danger">
+                <strong>إعدادات Firebase غير مكتملة.</strong>
+                افتح الملف <code>firebase-config.js</code> وضع بيانات مشروعك، ثم أعد تحميل الصفحة.
             </div>
         </div>
 
-        <!-- STEP 2: Rental Form -->
-        <div id="step-form" class="step-panel">
-            <div class="panel-header">
-                <h2 class="section-title">بيانات الاستئجار</h2>
-                <button class="btn-back" onclick="goToStep('step-tools')">→ عودة</button>
+        <!-- تسجيل الدخول / إنشاء حساب -->
+        <div id="view-auth" class="view">
+            <div class="tabs">
+                <button class="tab active" data-tab="login" type="button">تسجيل الدخول</button>
+                <button class="tab" data-tab="register" type="button">حساب جديد</button>
             </div>
-            <form id="rentalForm" onsubmit="handleFormSubmit(event)">
+
+            <form id="loginForm" class="tab-panel active" data-panel="login">
                 <div class="form-group">
-                    <label>الأداة المختارة</label>
-                    <input type="text" id="selectedToolDisplay" class="form-control selected-tool-input" readonly>
+                    <label for="loginEmail">البريد الإلكتروني</label>
+                    <input type="email" id="loginEmail" class="form-control" autocomplete="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="studentName">اسم الطالب ثلاثي</label>
-                    <input type="text" id="studentName" class="form-control" placeholder="أدخل اسمك الكامل" required>
+                    <label for="loginPassword">كلمة المرور</label>
+                    <input type="password" id="loginPassword" class="form-control" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="btn btn-block mt-20">دخول</button>
+                <button type="button" class="btn-link mt-12" id="forgotBtn">نسيت كلمة المرور؟</button>
+            </form>
+
+            <form id="registerForm" class="tab-panel" data-panel="register">
+                <div class="form-group">
+                    <label for="regName">اسم الطالب ثلاثي</label>
+                    <input type="text" id="regName" class="form-control" placeholder="أدخل اسمك الكامل" minlength="3" maxlength="80" required>
                 </div>
                 <div class="form-group">
-                    <label for="universityId">الرقم الجامعي</label>
-                    <input type="text" id="universityId" class="form-control" placeholder="مثال: 123456" required>
+                    <label for="regUni">الرقم الجامعي</label>
+                    <input type="text" id="regUni" class="form-control" placeholder="مثال: 123456" inputmode="numeric" pattern="[0-9]{4,12}" required>
                 </div>
                 <div class="form-group">
-                    <label for="phoneNumber">رقم الهاتف (واتساب)</label>
-                    <input type="tel" id="phoneNumber" class="form-control" placeholder="مثال: 91234567" required>
+                    <label for="regPhone">رقم الهاتف (واتساب)</label>
+                    <input type="tel" id="regPhone" class="form-control" placeholder="مثال: 91234567" inputmode="numeric" pattern="[0-9]{8}" required>
                 </div>
                 <div class="form-group">
-                    <label for="duration">مدة الاستئجار</label>
-                    <select id="duration" class="form-control" required>
-                        <option value="" disabled selected>اختر المدة</option>
-                        <option value="ساعة واحدة">ساعة واحدة</option>
-                        <option value="ساعتان">ساعتان</option>
-                        <option value="3 ساعات">3 ساعات</option>
-                        <option value="يوم كامل">يوم كامل</option>
-                    </select>
+                    <label for="regEmail">البريد الإلكتروني</label>
+                    <input type="email" id="regEmail" class="form-control" autocomplete="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="idCardImage">صورة البطاقة الجامعية</label>
-                    <input type="file" id="idCardImage" class="form-control" accept="image/*" required>
+                    <label for="regPassword">كلمة المرور (6 أحرف على الأقل)</label>
+                    <input type="password" id="regPassword" class="form-control" minlength="6" autocomplete="new-password" required>
                 </div>
-                <button type="submit" class="btn btn-block mt-20">انتقال للدفع</button>
+                <button type="submit" class="btn btn-accent btn-block mt-20">إنشاء الحساب</button>
             </form>
         </div>
 
-        <!-- STEP 3: Payment -->
-        <div id="step-payment" class="step-panel">
-            <div class="panel-header">
-                <h2 class="section-title">تحويل المبلغ</h2>
-                <button class="btn-back" onclick="goToStep('step-form')">→ عودة</button>
-            </div>
-            <div class="payment-info">
-                <p>يرجى تحويل المبلغ المخصص عبر أحد الحسابات التالية:</p>
-                <p><strong>بنك مسقط:</strong> <span class="account-number">0315012345678</span></p>
-                <p><strong>ثواني (Thawani):</strong> <span class="account-number">91234567</span></p>
-            </div>
-            <form id="paymentForm" onsubmit="handlePaymentSubmit(event)">
+        <!-- إكمال البيانات (إذا كان الحساب موجوداً بلا بيانات) -->
+        <div id="view-profile" class="view">
+            <h2 class="section-title">أكمل بياناتك</h2>
+            <form id="profileForm">
                 <div class="form-group">
-                    <label for="receiptImage">إرفاق إيصال الدفع</label>
-                    <input type="file" id="receiptImage" class="form-control" accept="image/*" required>
+                    <label for="pName">اسم الطالب ثلاثي</label>
+                    <input type="text" id="pName" class="form-control" minlength="3" maxlength="80" required>
                 </div>
-                <button type="submit" class="btn btn-accent btn-block mt-24">تأكيد الحجز</button>
+                <div class="form-group">
+                    <label for="pUni">الرقم الجامعي</label>
+                    <input type="text" id="pUni" class="form-control" inputmode="numeric" pattern="[0-9]{4,12}" required>
+                </div>
+                <div class="form-group">
+                    <label for="pPhone">رقم الهاتف (واتساب)</label>
+                    <input type="tel" id="pPhone" class="form-control" inputmode="numeric" pattern="[0-9]{8}" required>
+                </div>
+                <button type="submit" class="btn btn-block mt-20">حفظ</button>
+                <button type="button" class="btn-link mt-12 js-logout">تسجيل الخروج</button>
             </form>
         </div>
 
-        <!-- STEP 4: Success / PIN -->
-        <div id="step-success" class="step-panel">
-            <div class="success-card">
-                <h2>تم تأكيد حجزك بنجاح! 🎉</h2>
-                <p>استخدم الرمز التالي لفتح الصندوق واستلام الأداة:</p>
-                <div class="pin-container">
-                    <div class="pin-label">رمز فتح الصندوق</div>
-                    <div class="pin-code" id="pinDisplay">----</div>
-                </div>
-                <button class="btn btn-whatsapp btn-block" onclick="sendToWhatsApp()">
-                    احفظ بيانات حجزك عبر واتساب 📲
-                </button>
+        <!-- الواجهة الرئيسية -->
+        <div id="view-main" class="view">
+            <div class="userbar">
+                <div><span class="muted">أهلاً،</span> <strong id="userName"></strong></div>
+                <button class="btn-back js-logout" type="button">تسجيل الخروج</button>
             </div>
+
+            <div id="alerts"></div>
+            <div id="rentalPanel"></div>
+
+            <div id="toolsPanel">
+                <div id="step-tools" class="step-panel active">
+                    <h2 class="section-title">الأدوات المتاحة للحجز</h2>
+                    <div class="tools-grid" id="toolsGrid"></div>
+                </div>
+                <div id="step-plan" class="step-panel">
+                    <div class="panel-header">
+                        <h2 class="section-title">مدة الاستئجار</h2>
+                        <button class="btn-back" type="button" id="planBack">→ عودة</button>
+                    </div>
+                    <div id="planBox"></div>
+                </div>
+            </div>
+
+            <div id="historyPanel"></div>
         </div>
 
     </div>
 </div>
 
-<script src="script.js"></script>
+<div id="toast" class="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="common.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

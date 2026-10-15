@@ -1,0 +1,126 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "admins": {
+      "$uid": { ".read": "auth != null && auth.uid === $uid" }
+    },
+    "devices": {
+      "$uid": { ".read": "auth != null && auth.uid === $uid" }
+    },
+
+    "box": {
+      ".read": true,
+      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)"
+    },
+
+    "tools": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$toolId": {
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+        ".validate": "newData.hasChildren(['name', 'compartment', 'status', 'plans', 'lateFeePerHour'])",
+        "status": { ".validate": "newData.val() === 'available' || newData.val() === 'reserved' || newData.val() === 'rented' || newData.val() === 'maintenance'" },
+        "compartment": { ".validate": "newData.isNumber()" },
+        "lateFeePerHour": { ".validate": "newData.isNumber() && newData.val() >= 0" }
+      }
+    },
+
+    "users": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+
+        "profile": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true)",
+          ".validate": "newData.hasChildren(['name', 'universityId', 'phone', 'email', 'createdAt'])",
+          "name": { ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 80" },
+          "universityId": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4,12}$/)" },
+          "phone": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{8}$/)" },
+          "email": { ".validate": "newData.isString() && newData.val().length <= 120" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "state": {
+          ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+
+          "activeRental": {
+            ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.isString() && !root.child('rentals').child(newData.val()).exists() && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('uid').val() === auth.uid && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('status').val() === 'pending') || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'cancelled'))",
+            ".validate": "newData.isString()"
+          },
+          "lateFeeDue": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
+    "rentals": {
+      ".indexOn": ["uid", "status"],
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || (query.orderByChild === 'uid' && query.equalTo === auth.uid))",
+
+      "$rid": {
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'pending' && newData.child('createdAt').val() === now && root.child('users').child(auth.uid).child('profile').exists() && !root.child('users').child(auth.uid).child('state').child('activeRental').exists() && (!root.child('users').child(auth.uid).child('state').child('lateFeeDue').exists() || root.child('users').child(auth.uid).child('state').child('lateFeeDue').val() === 0) && root.child('tools').child(newData.child('toolId').val()).child('status').val() === 'available' && newData.child('toolName').val() === root.child('tools').child(newData.child('toolId').val()).child('name').val() && newData.child('compartment').val() === root.child('tools').child(newData.child('toolId').val()).child('compartment').val() && newData.child('hours').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('hours').val() && newData.child('amount').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('amount').val() && newData.parent().parent().child('users').child(auth.uid).child('state').child('activeRental').val() === $rid && !newData.hasChild('paidAt') && !newData.hasChild('startAt') && !newData.hasChild('dueAt') && !newData.hasChild('returnedAt') && !newData.hasChild('lateFee') && !newData.hasChild('currentPin') && !newData.hasChild('paymentClaimedAt')))",
+
+        ".validate": "newData.hasChildren(['uid', 'toolId', 'toolName', 'compartment', 'plan', 'hours', 'amount', 'ref', 'status', 'createdAt'])",
+
+        "uid": { ".validate": "newData.isString() && (!data.exists() || data.val() === newData.val())" },
+        "toolId": { ".validate": "newData.isString() && (!data.exists() || data.val() === newData.val())" },
+        "toolName": { ".validate": "newData.isString()" },
+        "compartment": { ".validate": "newData.isNumber()" },
+        "plan": { ".validate": "newData.isString()" },
+        "hours": { ".validate": "newData.isNumber() && newData.val() > 0" },
+        "amount": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "ref": { ".validate": "newData.isString() && newData.val().matches(/^FZ-[A-Z0-9]{6}$/)" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+
+        "status": {
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && data.val() === 'pending' && newData.val() === 'cancelled'",
+          ".validate": "newData.val() === 'pending' || newData.val() === 'paid' || newData.val() === 'active' || newData.val() === 'returned' || newData.val() === 'cancelled' || newData.val() === 'rejected'"
+        },
+
+        "paymentClaimedAt": {
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && data.parent().child('status').val() === 'pending' && newData.val() === now",
+          ".validate": "newData.isNumber()"
+        },
+
+        "currentPin": {
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && (data.parent().child('status').val() === 'paid' || data.parent().child('status').val() === 'active') && root.child('box').child('lastSeen').isNumber() && root.child('box').child('lastSeen').val() > now - 90000 && newData.isString() && newData.parent().parent().parent().child('pins').child(newData.val()).child('rentalId').val() === $rid",
+          ".validate": "newData.isString() && newData.val().matches(/^[0-9]{6}$/)"
+        },
+
+        "paidAt": { ".validate": "newData.isNumber()" },
+        "approvedBy": { ".validate": "newData.isString()" },
+        "startAt": { ".validate": "newData.isNumber()" },
+        "dueAt": { ".validate": "newData.isNumber()" },
+        "returnedAt": { ".validate": "newData.isNumber()" },
+        "lateFee": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "lateFeePaid": { ".validate": "newData.isBoolean()" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "pins": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+
+      "$pin": {
+        ".read": "auth != null && data.child('uid').val() === auth.uid",
+
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || ($pin.matches(/^[0-9]{6}$/) && (!data.exists() || data.child('used').val() === true || data.child('createdAt').val() < now - 600000) && newData.child('uid').val() === auth.uid && newData.child('used').val() === false && newData.child('createdAt').val() === now && newData.child('rentalId').val() === root.child('users').child(auth.uid).child('state').child('activeRental').val() && root.child('rentals').child(newData.child('rentalId').val()).child('uid').val() === auth.uid && newData.child('compartment').val() === root.child('rentals').child(newData.child('rentalId').val()).child('compartment').val() && ((newData.child('type').val() === 'pickup' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'paid') || (newData.child('type').val() === 'return' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'active')) && root.child('box').child('lastSeen').isNumber() && root.child('box').child('lastSeen').val() > now - 90000 && newData.parent().parent().child('rentals').child(newData.child('rentalId').val()).child('currentPin').val() === $pin))",
+
+        ".validate": "newData.hasChildren(['uid', 'rentalId', 'compartment', 'type', 'createdAt', 'used'])",
+        "uid": { ".validate": "newData.isString()" },
+        "rentalId": { ".validate": "newData.isString()" },
+        "compartment": { ".validate": "newData.isNumber()" },
+        "type": { ".validate": "newData.val() === 'pickup' || newData.val() === 'return'" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "used": { ".validate": "newData.isBoolean()" },
+        "usedAt": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

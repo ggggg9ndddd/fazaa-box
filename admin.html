@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فزعة | لوحة المسؤول</title>
+    <meta name="robots" content="noindex">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-container wide">
+    <header>
+        <div class="logo-box">
+            <span class="lightning-icon">⚡</span>
+            <span class="logo-text">لوحة المسؤول</span>
+        </div>
+        <p>صندوق فزعة</p>
+        <div class="box-status" id="boxStatus"><span class="dot"></span><span class="txt">جارٍ التحقق من الصندوق…</span></div>
+    </header>
+
+    <div class="content">
+        <div id="view-loading" class="view active"><div class="loader"></div></div>
+
+        <div id="view-setup" class="view">
+            <div class="banner banner-danger"><strong>إعدادات Firebase غير مكتملة.</strong> عدّل الملف <code>firebase-config.js</code>.</div>
+        </div>
+
+        <div id="view-auth" class="view narrow">
+            <h2 class="section-title">دخول المسؤول</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginEmail">البريد الإلكتروني</label>
+                    <input type="email" id="loginEmail" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">كلمة المرور</label>
+                    <input type="password" id="loginPassword" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-block mt-20">دخول</button>
+            </form>
+        </div>
+
+        <div id="view-denied" class="view narrow">
+            <div class="banner banner-danger">
+                <strong>هذا الحساب ليس مسؤولاً.</strong>
+                أضف المعرّف التالي في قاعدة البيانات تحت <code>admins</code> بالقيمة <code>true</code>:
+                <div class="ref-code small-code" dir="ltr" id="deniedUid"></div>
+            </div>
+            <button class="btn btn-block js-logout">تسجيل الخروج</button>
+        </div>
+
+        <div id="view-main" class="view">
+            <div class="userbar">
+                <div><span class="muted">المسؤول:</span> <strong id="adminEmail"></strong></div>
+                <button class="btn-back js-logout" type="button">تسجيل الخروج</button>
+            </div>
+
+            <div class="stats" id="stats"></div>
+
+            <div class="admin-grid">
+                <div class="admin-col">
+                    <section class="admin-section">
+                        <h2 class="section-title">💳 بانتظار التحقق من الدفع</h2>
+                        <div id="secPending"></div>
+                    </section>
+                    <section class="admin-section">
+                        <h2 class="section-title">📦 بانتظار الاستلام</h2>
+                        <div id="secPaid"></div>
+                    </section>
+                    <section class="admin-section">
+                        <h2 class="section-title">⏳ مستأجرة حالياً</h2>
+                        <div id="secActive"></div>
+                    </section>
+                </div>
+
+                <div class="admin-col">
+                    <section class="admin-section">
+                        <h2 class="section-title">🔢 محاكي لوحة الأرقام</h2>
+                        <p class="hint">لاختبار الرموز بدون الجهاز. ينفّذ نفس منطق ESP32 تماماً (التحقق، الفتح، تحديث الحالات).</p>
+                        <div class="keypad-wrap">
+                            <div class="keypad-screen" id="kpScreen" dir="ltr">______</div>
+                            <div class="keypad" id="keypad">
+                                <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+                                <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+                                <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+                                <button data-k="*" class="kp-fn">*</button><button data-k="0">0</button><button data-k="#" class="kp-ok">#</button>
+                            </div>
+                            <div class="keypad-result" id="kpResult">أدخل الرمز ثم اضغط #  (* للمسح)</div>
+                            <div class="compartments" id="compartments"></div>
+                            <label class="switch-row"><input type="checkbox" id="simBeat">
+                                <span>محاكاة اتصال الصندوق (نبضة كل 30 ثانية من هذه الصفحة) — للاختبار فقط قبل تشغيل ESP32</span></label>
+                        </div>
+                    </section>
+
+                    <section class="admin-section">
+                        <h2 class="section-title">⚠️ رسوم التأخير غير المسددة</h2>
+                        <div id="secFees"></div>
+                    </section>
+
+                    <section class="admin-section">
+                        <h2 class="section-title">🧰 الأدوات</h2>
+                        <div id="secTools"></div>
+                    </section>
+
+                    <section class="admin-section">
+                        <h2 class="section-title">📜 آخر العمليات</h2>
+                        <div id="secHistory"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="common.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
