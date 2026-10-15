@@ -8,16 +8,16 @@
   // البيانات الأولية للأدوات (تُكتب عند الضغط على "تهيئة الأدوات"). المبالغ بالبيسة.
   const DEFAULT_TOOLS = {
     calculator: {
-      name: "آلة حاسبة علمية (Casio)", compartment: 1, status: "available", lateFeePerHour: 300,
+      name: "آلة حاسبة علمية (Casio fx-991)", compartment: 1, status: "available", lateFeePerHour: 300,
       plans: { h1: { hours: 1, amount: 300 }, h2: { hours: 2, amount: 600 }, h3: { hours: 3, amount: 900 }, day: { hours: 24, amount: 1500 } }
     },
     typec: {
-      name: "وصلة Type-C", compartment: 2, status: "available", lateFeePerHour: 200,
+      name: "كيبل شحن 3 في 1 (Type-C / Lightning / Micro)", compartment: 2, status: "available", lateFeePerHour: 200,
       plans: { h1: { hours: 1, amount: 200 }, h2: { hours: 2, amount: 400 }, h3: { hours: 3, amount: 600 }, day: { hours: 24, amount: 1000 } }
     }
   };
 
-  const S = { rentals: {}, users: {}, tools: {}, pins: {}, opened: {} };
+  const S = { rentals: {}, users: {}, tools: {}, pins: {}, opened: {}, editingTool: null };
   const refs = [];
 
   function show(view) {
@@ -152,7 +152,32 @@
       </div>`).join("") : empty("لا توجد رسوم مستحقة.");
   }
 
-  function renderTools() {
+  const PLAN_KEYS = [["h1", 1], ["h2", 2], ["h3", 3], ["day", 24]];
+
+  function toolForm(id, t) {
+    const plans = t.plans || {};
+    return `<form class="admin-card tool-edit" data-tool-form="${id}">
+        <div class="admin-card-top"><b>تعديل القسم ${t.compartment}</b>${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
+        <div class="form-group">
+          <label>اسم الأداة</label>
+          <input class="form-control" name="name" value="${esc(t.name)}" minlength="2" maxlength="80" required>
+        </div>
+        <p class="muted small">المبالغ بالبيسة (1000 بيسة = 1 ريال)</p>
+        <div class="price-grid">
+          ${PLAN_KEYS.map(([k, h]) => `<label>${FZ.planLabel(h)}
+              <input class="form-control" type="number" min="0" step="50" name="${k}" value="${plans[k] ? plans[k].amount : ""}" required></label>`).join("")}
+          <label>رسوم التأخير / ساعة
+            <input class="form-control" type="number" min="0" step="50" name="lateFeePerHour" value="${t.lateFeePerHour ?? 0}" required></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-sm" type="submit">💾 حفظ</button>
+          <button class="btn btn-sm btn-ghost" type="button" data-action="toolEditCancel">إلغاء</button>
+        </div>
+      </form>`;
+  }
+
+  function renderTools(force) {
+    if (S.editingTool && !force) return; // لا نمسح ما يكتبه المسؤول أثناء التعديل
     const ids = Object.keys(S.tools).sort((a, b) => S.tools[a].compartment - S.tools[b].compartment);
     if (!ids.length) {
       $("secTools").innerHTML = `${empty("لا توجد أدوات في قاعدة البيانات.")}
@@ -161,6 +186,7 @@
     }
     $("secTools").innerHTML = ids.map(id => {
       const t = S.tools[id];
+      if (S.editingTool === id) return toolForm(id, t);
       const plans = Object.values(t.plans || {}).sort((a, b) => a.hours - b.hours)
         .map(p => `${FZ.planLabel(p.hours)}: ${money(p.amount)}`).join(" · ");
       const toggle = t.status === "available"
@@ -171,7 +197,10 @@
           <div class="admin-card-top"><b>${esc(t.name)}</b>${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
           <div class="small">القسم ${t.compartment} · رسوم التأخير ${money(t.lateFeePerHour)}/ساعة</div>
           <div class="muted small">${plans}</div>
-          <div class="actions">${toggle}</div>
+          <div class="actions">
+            <button class="btn btn-sm btn-accent" data-action="toolEdit" data-id="${id}">✏️ تعديل الاسم والأسعار</button>
+            ${toggle}
+          </div>
         </div>`;
     }).join("");
   }
@@ -247,6 +276,10 @@
           FZ.toast("تمت التسوية — يمكن للطالب الاستئجار مجدداً", "success");
         } else if (a === "toolStatus") {
           await FZ.db.ref(`tools/${id}/status`).set(btn.dataset.status);
+        } else if (a === "toolEdit") {
+          S.editingTool = id; renderTools(true);
+        } else if (a === "toolEditCancel") {
+          S.editingTool = null; renderTools(true);
         } else if (a === "seed") {
           await FZ.db.ref("tools").set(DEFAULT_TOOLS);
           FZ.toast("تمت تهيئة الأدوات", "success");
@@ -255,6 +288,30 @@
     } catch (err) {
       FZ.toast(err.message && !err.code ? err.message : FZ.authError(err), "error");
     }
+  });
+
+  // حفظ تعديل الأداة (الاسم + الأسعار + رسوم التأخير)
+  document.addEventListener("submit", async e => {
+    const form = e.target.closest("[data-tool-form]");
+    if (!form) return;
+    e.preventDefault();
+    const id = form.dataset.toolForm;
+    const f = new FormData(form);
+    const name = String(f.get("name") || "").trim();
+    if (name.length < 2) return FZ.toast("اكتب اسم الأداة", "error");
+    const upd = { [`tools/${id}/name`]: name, [`tools/${id}/lateFeePerHour`]: Math.max(0, parseInt(f.get("lateFeePerHour"), 10) || 0) };
+    for (const [k, h] of PLAN_KEYS) {
+      const amount = parseInt(f.get(k), 10);
+      if (!(amount >= 0)) return FZ.toast("تأكد من كل الأسعار", "error");
+      upd[`tools/${id}/plans/${k}`] = { hours: h, amount };
+    }
+    await FZ.withBusy(form.querySelector("[type=submit]"), async () => {
+      try {
+        await FZ.db.ref().update(upd);
+        S.editingTool = null; renderTools(true);
+        FZ.toast("تم حفظ التعديلات ✅ تظهر للطلاب مباشرة", "success");
+      } catch (err) { FZ.toast(FZ.authError(err), "error"); }
+    });
   });
 
   // =====================================================================

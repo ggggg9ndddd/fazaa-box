@@ -485,3 +485,10 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
     .admin-grid { grid-template-columns: 1fr; }
     .stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* تعديل الأدوات */
+.tool-edit { border-color: var(--accent-gold); background: #FFFDF5; }
+.tool-edit .form-group { margin-bottom: 8px; }
+.price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.price-grid label { font-size: 0.78rem; font-weight: 700; color: var(--primary-navy); display: flex; flex-direction: column; gap: 4px; }
+.price-grid .form-control { padding: 8px; }
