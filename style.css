@@ -546,3 +546,13 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 .add-admin { display: flex; gap: 8px; margin-bottom: 10px; }
 .add-admin .form-control { flex: 1; padding: 8px 10px; }
 .admin-row { flex-direction: row; justify-content: space-between; align-items: center; }
+
+/* زر واتساب العائم */
+.wa-float {
+    position: fixed; bottom: 18px; left: 18px; z-index: 40;
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #25D366; color: #fff; text-decoration: none; font-weight: 700; font-size: 0.85rem;
+    padding: 10px 14px; border-radius: 50px; box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+.wa-float:hover { background: #1DA851; }
+.banner .btn-sm { display: inline-flex; color: #fff; text-decoration: none; }

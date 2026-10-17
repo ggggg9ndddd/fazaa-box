@@ -31,6 +31,12 @@
 
   if (!FZ.ready) { show("view-setup"); return; }
 
+  // رابط واتساب الفريق
+  const contactUrl = (text) => typeof CONTACT_WHATSAPP !== "undefined" && CONTACT_WHATSAPP
+    ? `https://wa.me/968${CONTACT_WHATSAPP}${text ? "?text=" + encodeURIComponent(text) : ""}` : null;
+  if (contactUrl()) $("waContact").href = contactUrl("السلام عليكم، عندي استفسار عن صندوق فزعة");
+  else $("waContact").style.display = "none";
+
   // -------------------- اتصال الصندوق --------------------
   FZ.watchBox(() => {
     FZ.renderBoxPill($("boxStatus"));
@@ -229,7 +235,8 @@
     const fee = S.state.lateFeeDue || 0;
     if (fee > 0) {
       out.push(`<div class="banner banner-danger"><strong>عليك رسوم تأخير: ${money(fee)}</strong>
-        لا يمكنك استئجار أداة جديدة حتى تسويتها. حوّل المبلغ وتواصل مع المسؤول.</div>`);
+        لا يمكنك استئجار أداة جديدة حتى تسويتها. حوّل المبلغ وتواصل مع الفريق.
+        ${contactUrl() ? `<a class="btn btn-whatsapp btn-sm mt-12" target="_blank" rel="noopener" href="${contactUrl("السلام عليكم، أبي أسدد رسوم التأخير — رقمي الجامعي " + (S.profile ? S.profile.universityId : ""))}">تواصل عبر واتساب</a>` : ""}</div>`);
     }
     if (!FZ.box.online && activeList().some(a => ["paid", "active"].includes(a.r.status))) {
       out.push(`<div class="banner banner-warn"><strong>الصندوق غير متصل حالياً.</strong>
@@ -375,7 +382,7 @@
         `<p><strong>${esc(x.label)}:</strong> <span class="account-number">${esc(x.value)}</span></p>`).join("");
       body = `
         <div class="payment-info">
-          <p>حوّل <strong>${money(r.amount)}</strong> إلى أحد الحسابات التالية:</p>
+          <p>حوّل <strong>${money(r.amount)}</strong> إلى ${(PAYMENT_INFO.accounts || []).length > 1 ? "أحد الحسابات التالية" : "الحساب التالي"}:</p>
           ${accounts}
           <p class="mt-12">اكتب هذا <strong>الرمز المرجعي</strong> في ملاحظة/وصف التحويل:</p>
           <div class="ref-code" dir="ltr">${esc(r.ref)}</div>
