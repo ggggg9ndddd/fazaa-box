@@ -66,11 +66,33 @@
       universityId: $(prefix + "Uni").value.trim(),
       phone: $(prefix + "Phone").value.trim().replace(/^(\+?968)/, "")
     };
-    if (p.name.length < 3) throw new Error("اكتب اسمك الكامل");
+    p.name = p.name.replace(/\s+/g, " ");
+    if (p.name.split(" ").filter(w => w.length > 1).length < 3) throw new Error("اكتب اسمك الثلاثي (الاسم الأول، اسم الأب، اسم العائلة)");
     if (!/^[0-9]{4,12}$/.test(p.universityId)) throw new Error("الرقم الجامعي أرقام فقط");
     if (!/^[0-9]{8}$/.test(p.phone)) throw new Error("رقم الهاتف 8 أرقام بدون مفتاح الدولة");
     return p;
   }
+
+  // ---- الدخول بحساب Google ----
+  $("googleBtn").addEventListener("click", async e => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    await FZ.withBusy(e.currentTarget, async () => {
+      try {
+        await FZ.auth.signInWithPopup(provider);
+      } catch (err) {
+        if (err && (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment")) {
+          return FZ.auth.signInWithRedirect(provider);
+        }
+        if (err && (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request")) return;
+        if (err && err.code === "auth/account-exists-with-different-credential") {
+          return FZ.toast("هذا البريد مسجّل بكلمة مرور — ادخل بالبريد وكلمة المرور", "error");
+        }
+        FZ.toast(FZ.authError(err), "error");
+      }
+    });
+  });
+  if (FZ.auth) FZ.auth.getRedirectResult().catch(err => FZ.toast(FZ.authError(err), "error"));
 
   $("registerForm").addEventListener("submit", async e => {
     e.preventDefault();
@@ -119,7 +141,14 @@
       const v = snap.val() || {};
       S.profile = v.profile || null;
       S.state = v.state || {};
-      if (!S.profile) { if (!S.registering) show("view-profile"); return; }
+      if (!S.profile) {
+        if (!S.registering) {
+          // تعبئة الاسم من حساب Google كبداية (يعدّله الطالب ليكون ثلاثياً)
+          if (!$("pName").value && user.displayName) $("pName").value = user.displayName;
+          show("view-profile");
+        }
+        return;
+      }
       $("userName").textContent = S.profile.name;
       show("view-main");
       const rid = S.state.activeRental || null;

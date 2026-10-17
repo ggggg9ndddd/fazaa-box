@@ -518,3 +518,10 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 .receipt-link { font-size: 0.85rem; font-weight: 700; color: var(--secondary-navy); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #B91C1C; }
+
+/* الدخول بحساب Google */
+.btn-google { background: #fff; color: var(--text-dark); border: 1.5px solid var(--border-color); gap: 10px; }
+.btn-google:hover { background: #F8FAFC; border-color: #CBD5E1; }
+.or-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
+.text-start { text-align: right; }

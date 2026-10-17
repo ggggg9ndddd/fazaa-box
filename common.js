@@ -115,6 +115,8 @@ const FZ = (() => {
       "auth/invalid-login-credentials": "البريد أو كلمة المرور غير صحيحة",
       "auth/too-many-requests": "محاولات كثيرة، حاول بعد قليل",
       "auth/network-request-failed": "تحقق من اتصالك بالإنترنت",
+      "auth/unauthorized-domain": "هذا الموقع غير مسموح في إعدادات Firebase (Authorized domains)",
+      "auth/operation-not-allowed": "الدخول بهذه الطريقة غير مفعّل في Firebase",
       "PERMISSION_DENIED": "العملية مرفوضة من قاعدة البيانات"
     };
     if (map[code]) return map[code];
