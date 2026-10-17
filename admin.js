@@ -34,6 +34,33 @@
       catch (err) { FZ.toast(FZ.authError(err), "error"); }
     });
   });
+  // الدخول بحساب Google
+  $("googleBtn").addEventListener("click", async e => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    await FZ.withBusy(e.currentTarget, async () => {
+      try {
+        await FZ.auth.signInWithPopup(provider);
+      } catch (err) {
+        if (err && (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment")) {
+          return FZ.auth.signInWithRedirect(provider);
+        }
+        if (err && (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request")) return;
+        FZ.toast(FZ.authError(err), "error");
+      }
+    });
+  });
+  FZ.auth.getRedirectResult().catch(err => FZ.toast(FZ.authError(err), "error"));
+
+  $("forgotBtn").addEventListener("click", async () => {
+    const email = $("loginEmail").value.trim();
+    if (!email) return FZ.toast("اكتب بريدك الإلكتروني أولاً", "error");
+    try {
+      await FZ.auth.sendPasswordResetEmail(email);
+      FZ.toast("أرسلنا رابط إعادة تعيين كلمة المرور إلى بريدك", "success");
+    } catch (err) { FZ.toast(FZ.authError(err), "error"); }
+  });
+
   document.querySelectorAll(".js-logout").forEach(b => b.addEventListener("click", () => FZ.auth.signOut()));
 
   FZ.auth.onAuthStateChanged(async user => {
