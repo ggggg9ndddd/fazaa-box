@@ -72,7 +72,7 @@
   function renderAll() {
     renderStats();
     renderPending(); renderPaid(); renderActive();
-    renderFees(); renderTools(); renderHistory(); renderCompartments();
+    renderFees(); renderTools(); renderHistory(); renderCompartments(); renderUsers();
   }
 
   function renderStats() {
@@ -205,6 +205,84 @@
     }).join("");
   }
 
+  // -------------------- المستخدمون --------------------
+  function userRows() {
+    const counts = {};
+    Object.values(S.rentals).forEach(r => {
+      if (!counts[r.uid]) counts[r.uid] = { total: 0, done: 0 };
+      counts[r.uid].total++;
+      if (r.status === "returned") counts[r.uid].done++;
+    });
+    return Object.entries(S.users)
+      .filter(([, u]) => u.profile)
+      .map(([uid, u]) => {
+        const p = u.profile, st = u.state || {};
+        const active = st.activeRental ? S.rentals[st.activeRental] : null;
+        return {
+          uid, name: p.name, universityId: p.universityId, phone: p.phone, email: p.email,
+          createdAt: p.createdAt, rentals: (counts[uid] || {}).total || 0,
+          status: active ? (FZ.STATUS[active.status] || {}).label + " — " + active.toolName : "لا يوجد حجز",
+          fee: st.lateFeeDue || 0
+        };
+      })
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
+
+  function renderUsers() {
+    const all = userRows();
+    $("usersCount").textContent = all.length;
+    const q = ($("usersSearch").value || "").trim().toLowerCase();
+    const rows = q ? all.filter(u => [u.name, u.universityId, u.phone, u.email].join(" ").toLowerCase().includes(q)) : all;
+    $("usersBody").innerHTML = rows.length ? rows.map(u => `<tr>
+        <td><b>${esc(u.name)}</b></td>
+        <td>${esc(u.universityId)}</td>
+        <td><a href="https://wa.me/968${esc(u.phone)}" target="_blank" rel="noopener">${esc(u.phone)}</a></td>
+        <td dir="ltr">${esc(u.email)}</td>
+        <td>${FZ.fmtTime(u.createdAt)}</td>
+        <td>${u.rentals}</td>
+        <td>${esc(u.status)}</td>
+        <td class="${u.fee ? "danger-text" : ""}">${u.fee ? money(u.fee) : "—"}</td>
+      </tr>`).join("") : `<tr><td colspan="8" class="muted">لا يوجد مستخدمون${q ? " مطابقون للبحث" : ""}.</td></tr>`;
+  }
+  $("usersSearch").addEventListener("input", renderUsers);
+
+  // ملف CSV بترميز UTF-8 مع BOM حتى يفتح العربي صحيحاً في Excel و Google Sheets
+  function downloadCsv(filename, header, rows) {
+    const cell = v => {
+      const s = String(v ?? "");
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = "\uFEFF" + [header, ...rows].map(r => r.map(cell).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+  const fmtDate = ts => ts ? new Date(ts).toLocaleString("en-GB", { timeZone: "Asia/Muscat" }) : "";
+  const today = () => new Date().toISOString().slice(0, 10);
+  const textCell = v => (v ? `\u200E${v}` : ""); // يمنع Excel من حذف الأصفار أو تحويل الأرقام
+
+  function exportUsers() {
+    const rows = userRows().map(u => [u.name, textCell(u.universityId), textCell(u.phone), u.email,
+      fmtDate(u.createdAt), u.rentals, u.status, (u.fee / 1000).toFixed(3)]);
+    downloadCsv(`fazza-users-${today()}.csv`,
+      ["الاسم", "الرقم الجامعي", "الهاتف", "الإيميل", "تاريخ التسجيل", "عدد الحجوزات", "الحالة الحالية", "رسوم مستحقة (ر.ع)"], rows);
+  }
+
+  function exportRentals() {
+    const rows = Object.values(S.rentals).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map(r => {
+      const p = (S.users[r.uid] && S.users[r.uid].profile) || {};
+      return [r.ref, p.name || "", textCell(p.universityId), textCell(p.phone), r.toolName, FZ.planLabel(r.hours),
+        (r.amount / 1000).toFixed(3), (FZ.STATUS[r.status] || {}).label || r.status,
+        fmtDate(r.createdAt), fmtDate(r.paidAt), fmtDate(r.startAt), fmtDate(r.dueAt), fmtDate(r.returnedAt),
+        r.lateFee ? (r.lateFee / 1000).toFixed(3) : "", r.lateFee ? (r.lateFeePaid ? "نعم" : "لا") : ""];
+    });
+    downloadCsv(`fazza-rentals-${today()}.csv`,
+      ["الرمز المرجعي", "الاسم", "الرقم الجامعي", "الهاتف", "الأداة", "المدة", "المبلغ (ر.ع)", "الحالة",
+       "تاريخ الطلب", "تاريخ الموافقة", "الاستلام", "موعد الإرجاع", "الإرجاع الفعلي", "رسوم التأخير (ر.ع)", "مسددة؟"], rows);
+  }
+
   function renderHistory() {
     const items = Object.entries(S.rentals)
       .filter(([, r]) => ["returned", "cancelled", "rejected"].includes(r.status))
@@ -276,6 +354,10 @@
           FZ.toast("تمت التسوية — يمكن للطالب الاستئجار مجدداً", "success");
         } else if (a === "toolStatus") {
           await FZ.db.ref(`tools/${id}/status`).set(btn.dataset.status);
+        } else if (a === "exportUsers") {
+          exportUsers();
+        } else if (a === "exportRentals") {
+          exportRentals();
         } else if (a === "toolEdit") {
           S.editingTool = id; renderTools(true);
         } else if (a === "toolEditCancel") {

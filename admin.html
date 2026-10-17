@@ -112,6 +112,24 @@
                     </section>
                 </div>
             </div>
+
+            <section class="admin-section users-section">
+                <div class="users-head">
+                    <h2 class="section-title">👥 المستخدمون <span class="count-pill" id="usersCount">0</span></h2>
+                    <div class="actions">
+                        <button class="btn btn-sm btn-accent" data-action="exportUsers">⬇️ تنزيل بيانات المستخدمين (Excel)</button>
+                        <button class="btn btn-sm btn-ghost" data-action="exportRentals">⬇️ تنزيل سجل الحجوزات (Excel)</button>
+                    </div>
+                </div>
+                <input type="search" id="usersSearch" class="form-control" placeholder="ابحث بالاسم أو الرقم الجامعي أو الهاتف أو الإيميل">
+                <div class="table-wrap"><table class="users-table">
+                    <thead><tr>
+                        <th>الاسم</th><th>الرقم الجامعي</th><th>الهاتف</th><th>الإيميل</th>
+                        <th>تاريخ التسجيل</th><th>عدد الحجوزات</th><th>الحالة</th><th>رسوم مستحقة</th>
+                    </tr></thead>
+                    <tbody id="usersBody"></tbody>
+                </table></div>
+            </section>
         </div>
     </div>
 </div>
