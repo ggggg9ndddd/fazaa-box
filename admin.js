@@ -159,13 +159,23 @@
 
   const PLAN_KEYS = [["h1", 1], ["h2", 2], ["h3", 3], ["day", 24]];
 
+  const NEW_TOOL = "__new__";
+  function nextCompartment() {
+    return Object.values(S.tools).reduce((m, t) => Math.max(m, t.compartment || 0), 0) + 1;
+  }
+
   function toolForm(id, t) {
+    const isNew = id === NEW_TOOL;
     const plans = t.plans || {};
     return `<form class="admin-card tool-edit" data-tool-form="${id}">
-        <div class="admin-card-top"><b>تعديل القسم ${t.compartment}</b>${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
+        <div class="admin-card-top"><b>${isNew ? "➕ أداة جديدة" : "تعديل: " + esc(t.name)}</b>${isNew ? "" : FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
         <div class="form-group">
           <label>اسم الأداة</label>
-          <input class="form-control" name="name" value="${esc(t.name)}" minlength="2" maxlength="80" required>
+          <input class="form-control" name="name" value="${esc(t.name || "")}" placeholder="مثال: باور بانك 10000mAh" minlength="2" maxlength="80" required>
+        </div>
+        <div class="form-group">
+          <label>رقم القسم / المكان</label>
+          <input class="form-control" type="number" min="1" step="1" name="compartment" value="${t.compartment || nextCompartment()}" required>
         </div>
         <p class="muted small">المبالغ بالبيسة (1000 بيسة = 1 ريال)</p>
         <div class="price-grid">
@@ -177,6 +187,8 @@
         <div class="actions">
           <button class="btn btn-sm" type="submit">💾 حفظ</button>
           <button class="btn btn-sm btn-ghost" type="button" data-action="toolEditCancel">إلغاء</button>
+          ${!isNew && (t.status === "available" || t.status === "maintenance")
+            ? `<button class="btn btn-sm btn-danger" type="button" data-action="toolDelete" data-id="${id}">🗑 حذف الأداة</button>` : ""}
         </div>
       </form>`;
   }
@@ -184,12 +196,15 @@
   function renderTools(force) {
     if (S.editingTool && !force) return; // لا نمسح ما يكتبه المسؤول أثناء التعديل
     const ids = Object.keys(S.tools).sort((a, b) => S.tools[a].compartment - S.tools[b].compartment);
+    const addBox = S.editingTool === NEW_TOOL
+      ? toolForm(NEW_TOOL, { plans: {}, lateFeePerHour: 0 })
+      : `<button class="btn btn-accent btn-block" data-action="toolAdd">➕ إضافة أداة جديدة</button>`;
     if (!ids.length) {
       $("secTools").innerHTML = `${empty("لا توجد أدوات في قاعدة البيانات.")}
-        <button class="btn btn-accent btn-sm" data-action="seed">تهيئة الأدوات الافتراضية</button>`;
+        <div class="actions mb-12"><button class="btn btn-ghost btn-sm" data-action="seed">تهيئة الأدوات الافتراضية</button></div>${addBox}`;
       return;
     }
-    $("secTools").innerHTML = ids.map(id => {
+    $("secTools").innerHTML = addBox + ids.map(id => {
       const t = S.tools[id];
       if (S.editingTool === id) return toolForm(id, t);
       const plans = Object.values(t.plans || {}).sort((a, b) => a.hours - b.hours)
@@ -373,6 +388,15 @@
           exportUsers();
         } else if (a === "exportRentals") {
           exportRentals();
+        } else if (a === "toolAdd") {
+          S.editingTool = NEW_TOOL; renderTools(true);
+        } else if (a === "toolDelete") {
+          const t = S.tools[id];
+          if (!t || !(t.status === "available" || t.status === "maintenance")) throw new Error("لا يمكن حذف أداة محجوزة أو مستأجرة");
+          if (!confirm(`حذف «${t.name}» نهائياً؟ الحجوزات السابقة تبقى في السجل.`)) return;
+          await FZ.db.ref(`tools/${id}`).remove();
+          S.editingTool = null; renderTools(true);
+          FZ.toast("تم حذف الأداة", "success");
         } else if (a === "toolEdit") {
           S.editingTool = id; renderTools(true);
         } else if (a === "toolEditCancel") {
@@ -392,11 +416,19 @@
     const form = e.target.closest("[data-tool-form]");
     if (!form) return;
     e.preventDefault();
-    const id = form.dataset.toolForm;
+    const isNew = form.dataset.toolForm === NEW_TOOL;
+    const id = isNew ? FZ.db.ref("tools").push().key : form.dataset.toolForm;
     const f = new FormData(form);
     const name = String(f.get("name") || "").trim();
     if (name.length < 2) return FZ.toast("اكتب اسم الأداة", "error");
-    const upd = { [`tools/${id}/name`]: name, [`tools/${id}/lateFeePerHour`]: Math.max(0, parseInt(f.get("lateFeePerHour"), 10) || 0) };
+    const compartment = parseInt(f.get("compartment"), 10);
+    if (!(compartment >= 1)) return FZ.toast("اكتب رقم القسم", "error");
+    const upd = {
+      [`tools/${id}/name`]: name,
+      [`tools/${id}/compartment`]: compartment,
+      [`tools/${id}/lateFeePerHour`]: Math.max(0, parseInt(f.get("lateFeePerHour"), 10) || 0)
+    };
+    if (isNew) upd[`tools/${id}/status`] = "available";
     for (const [k, h] of PLAN_KEYS) {
       const amount = parseInt(f.get(k), 10);
       if (!(amount >= 0)) return FZ.toast("تأكد من كل الأسعار", "error");
@@ -406,7 +438,7 @@
       try {
         await FZ.db.ref().update(upd);
         S.editingTool = null; renderTools(true);
-        FZ.toast("تم حفظ التعديلات ✅ تظهر للطلاب مباشرة", "success");
+        FZ.toast(isNew ? "تمت إضافة الأداة ✅ تظهر للطلاب مباشرة" : "تم حفظ التعديلات ✅ تظهر للطلاب مباشرة", "success");
       } catch (err) { FZ.toast(FZ.authError(err), "error"); }
     });
   });

@@ -540,3 +540,4 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
     padding: 10px; color: #E2E8F0; font-size: 0.85rem;
 }
 .unlock-empty { color: #94A3B8; text-align: center; padding: 8px; }
+.mb-12 { margin-bottom: 12px; }
