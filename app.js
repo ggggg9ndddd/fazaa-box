@@ -394,7 +394,8 @@
       body = `
         <div class="banner banner-success">تم تأكيد الدفع ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
         <p class="hint">مدة الاستئجار تبدأ لحظة فتح القسم.</p>
-        ${openBlock(a, "pickup", r.compartment)}`;
+        ${openBlock(a, "pickup", r.compartment)}
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ بيانات حجزك عبر واتساب 📲</button>`;
     } else if (r.status === "active") {
       const t = FZ.now();
       let due;
@@ -417,7 +418,8 @@
       body = `${due}
         <h3 class="sub-title">إرجاع الأداة</h3>
         <p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
-        ${openBlock(a, "return", r.compartment)}`;
+        ${openBlock(a, "return", r.compartment)}
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ موعد الإرجاع عبر واتساب 📲</button>`;
     } else {
       body = `<p class="hint">جارٍ التحديث…</p>`;
     }
@@ -599,7 +601,8 @@
     if (!r || !S.profile) return;
     const msg = `*تفاصيل حجز صندوق فزعة* ⚡\n\n` +
       `*الأداة:* ${r.toolName}\n*الاسم:* ${S.profile.name}\n*الرقم الجامعي:* ${S.profile.universityId}\n` +
-      `*المدة:* ${FZ.planLabel(r.hours)}\n*المبلغ:* ${money(r.amount)}\n*الرمز المرجعي للتحويل:* ${r.ref}\n\n` +
+      `*المدة:* ${FZ.planLabel(r.hours)}\n*المبلغ:* ${money(r.amount)}\n*الرمز المرجعي للتحويل:* ${r.ref}\n` +
+      (r.dueAt ? `*موعد الإرجاع:* ${FZ.fmtTime(r.dueAt)}\n` : "") + `\n` +
       `شكراً لاستخدامك صندوق فزعة!`;
     window.open(`https://wa.me/968${S.profile.phone}?text=${encodeURIComponent(msg)}`, "_blank");
   }

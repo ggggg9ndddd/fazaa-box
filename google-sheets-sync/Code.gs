@@ -101,6 +101,9 @@ function syncFazza() {
   const blank = ss.getSheetByName('Sheet1') || ss.getSheetByName('الورقة1');
   if (blank && ss.getSheets().length > 1 && blank.getLastRow() === 0) ss.deleteSheet(blank);
   Logger.log('تم التحديث: ' + userRows.length + ' مستخدم، ' + rentalRows.length + ' حجز');
+
+  // إيميلات التذكير والتأخير والإرجاع (تعمل مع كل تحديث تلقائي كل 15 دقيقة)
+  try { notifyRentals_(rentals, users); } catch (e) { Logger.log('notify error: ' + e.message); }
 }
 
 function writeSheet_(ss, name, header, rows, textCols) {
@@ -174,6 +177,7 @@ function doPost(e) {
         autoApproved = true;
       }
       patchRoot_(upd);
+      notifyReceipt_(r, profile, url, autoApproved);
       return json_({
         ok: true, autoApproved: autoApproved,
         msg: autoApproved ? 'تم استلام الإيصال وتأكيد الحجز ✅' : 'تم استلام الإيصال، وسيراجعه المسؤول قريباً'
@@ -227,4 +231,119 @@ function json_(obj) {
 function setupReceipts() {
   const f = receiptsFolder_();
   Logger.log('مجلد الإيصالات: ' + f.getUrl());
+}
+
+
+/* =====================================================================
+ *  الإيميلات التلقائية (مجانية عبر Gmail — حوالي 100 رسالة يومياً)
+ * ===================================================================== */
+const SITE_URL = 'https://ggggg9ndddd.github.io/fazaa-box/';
+const ADMIN_URL = SITE_URL + 'admin.html';
+
+function money_(baisa) {
+  baisa = baisa || 0;
+  return baisa < 1000 ? baisa + ' بيسة' : (baisa / 1000).toFixed(3) + ' ر.ع';
+}
+function dueOf_(r) {
+  return r.dueAt || (r.startAt ? r.startAt + (r.hours || 0) * 3600000 : 0);
+}
+
+function mailHtml_(title, rows, note, btnText, btnUrl) {
+  const trs = rows.map(function (x) {
+    return '<tr><td style="padding:6px 0;color:#64748B">' + x[0] + '</td><td style="padding:6px 0;font-weight:700;color:#0B192C">' + x[1] + '</td></tr>';
+  }).join('');
+  return '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden">' +
+    '<div style="background:#0B192C;color:#fff;padding:18px;text-align:center;border-bottom:4px solid #FFD700">' +
+    '<div style="font-size:20px;font-weight:800">⚡ صندوق فزعة</div></div>' +
+    '<div style="padding:18px"><h2 style="margin:0 0 12px;font-size:17px;color:#0B192C">' + title + '</h2>' +
+    '<table style="width:100%;font-size:14px;border-collapse:collapse">' + trs + '</table>' +
+    (note ? '<p style="font-size:13px;color:#334155;line-height:1.8;margin-top:14px">' + note + '</p>' : '') +
+    (btnUrl ? '<p style="text-align:center;margin-top:18px"><a href="' + btnUrl + '" style="background:#FFD700;color:#0B192C;text-decoration:none;font-weight:700;padding:10px 22px;border-radius:8px;display:inline-block">' + btnText + '</a></p>' : '') +
+    '</div></div>';
+}
+
+function sendMail_(to, subject, html) {
+  if (!to) return;
+  try {
+    MailApp.sendEmail({ to: to, subject: subject, htmlBody: html, name: 'صندوق فزعة' });
+  } catch (e) {
+    Logger.log('mail failed to ' + to + ': ' + e.message);
+  }
+}
+
+function adminEmails_(users) {
+  users = users || fetchPath_('users');
+  const admins = fetchPath_('admins') || {};
+  const list = [];
+  Object.keys(admins).forEach(function (uid) {
+    const p = users[uid] && users[uid].profile;
+    if (admins[uid] === true && p && p.email) list.push(p.email.toLowerCase());
+  });
+  const owner = (Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  if (owner) list.push(owner);
+  return list.filter(function (e, i) { return e && list.indexOf(e) === i; }).join(',');
+}
+
+// عند رفع إيصال: إيميل للمشرفين + تأكيد للطالب
+function notifyReceipt_(r, profile, receiptUrl, autoApproved) {
+  const rows = [
+    ['الطالب', profile.name || '—'], ['الرقم الجامعي', profile.universityId || '—'], ['الهاتف', profile.phone || '—'],
+    ['الأداة', r.toolName], ['المدة', hoursLabel_(r.hours)], ['المبلغ', money_(r.amount)], ['الرمز المرجعي', r.ref]
+  ];
+  sendMail_(adminEmails_(),
+    (autoApproved ? '🧾 إيصال جديد — ' : '⚠️ إيصال يحتاج مراجعة — ') + r.ref + ' — ' + (profile.name || ''),
+    mailHtml_(autoApproved ? 'إيصال جديد وتم تأكيد الحجز تلقائياً' : 'إيصال جديد يحتاج مراجعتك (الأداة كانت محجوزة)',
+      rows.concat([['الإيصال', '<a href="' + receiptUrl + '">عرض الإيصال</a>']]),
+      'تأكد من وصول المبلغ في حسابك البنكي. إذا الإيصال غير صحيح، ارفضه من لوحة المسؤول.', 'فتح لوحة المسؤول', ADMIN_URL));
+
+  sendMail_(profile.email,
+    autoApproved ? '✅ تم تأكيد حجزك — ' + r.toolName : '🧾 استلمنا إيصالك — ' + r.toolName,
+    mailHtml_(autoApproved ? 'تم تأكيد حجزك ✅' : 'استلمنا إيصالك وسنراجعه قريباً',
+      [['الأداة', r.toolName], ['المدة', hoursLabel_(r.hours)], ['المبلغ', money_(r.amount)], ['الرمز المرجعي', r.ref]],
+      autoApproved ? 'ادخل الموقع لاستلام الأداة. مدة الاستئجار تبدأ من لحظة الاستلام، ولا تنسَ موعد الإرجاع.' : 'الأداة كانت محجوزة لحظة رفع الإيصال، وسيتواصل معك الفريق.',
+      'فتح الموقع', SITE_URL));
+}
+
+// تذكير قبل الموعد بساعة، تنبيه عند التأخير، وتأكيد بعد الإرجاع — كل إيميل يُرسل مرة واحدة فقط
+function notifyRentals_(rentals, users) {
+  const now = Date.now(), HOUR = 3600000;
+  const upd = {};
+  let admins = null;
+  Object.keys(rentals).forEach(function (rid) {
+    const r = rentals[rid];
+    const p = (users[r.uid] && users[r.uid].profile) || {};
+    if (r.status === 'active') {
+      const due = dueOf_(r);
+      if (!due) return;
+      if (!r.remindSent && due > now && due - now <= HOUR) {
+        sendMail_(p.email, '⏰ تذكير: موعد إرجاع ' + r.toolName + ' بعد أقل من ساعة',
+          mailHtml_('موعد الإرجاع قرّب ⏰', [['الأداة', r.toolName], ['موعد الإرجاع', fmt_(due)]],
+            'أرجع الأداة قبل الموعد. بعد انتهاء المدة لديك ساعة سماح، وبعدها تُسجَّل رسوم تأخير.', 'فتح الموقع', SITE_URL));
+        upd['rentals/' + rid + '/remindSent'] = true;
+      }
+      if (!r.overdueSent && now > due) {
+        sendMail_(p.email, '🚨 انتهت مدة استئجار ' + r.toolName,
+          mailHtml_('انتهت مدة الاستئجار — أرجع الأداة الآن', [['الأداة', r.toolName], ['كان موعد الإرجاع', fmt_(due)]],
+            'لديك ساعة سماح من موعد الإرجاع، بعدها تُحسب رسوم تأخير عن كل ساعة ويُمنع الحجز حتى تسويتها.', 'فتح الموقع', SITE_URL));
+        admins = admins || adminEmails_(users);
+        sendMail_(admins, '🚨 تأخير في الإرجاع — ' + (p.name || '') + ' — ' + r.toolName,
+          mailHtml_('طالب متأخر في الإرجاع', [['الطالب', p.name || '—'], ['الرقم الجامعي', p.universityId || '—'], ['الهاتف', p.phone || '—'],
+            ['الأداة', r.toolName], ['كان موعد الإرجاع', fmt_(due)]], '', 'فتح لوحة المسؤول', ADMIN_URL));
+        upd['rentals/' + rid + '/overdueSent'] = true;
+      }
+    } else if (r.status === 'returned' && !r.returnNotified && r.returnedAt && now - r.returnedAt < 24 * HOUR) {
+      sendMail_(p.email, '✅ تم إرجاع ' + r.toolName,
+        mailHtml_('تم تسجيل الإرجاع، شكراً لك 🌟', [['الأداة', r.toolName], ['وقت الإرجاع', fmt_(r.returnedAt)],
+          ['رسوم التأخير', r.lateFee ? money_(r.lateFee) : 'لا يوجد']],
+          r.lateFee ? 'عليك رسوم تأخير، ولن تتمكن من الحجز مجدداً حتى تسويتها. تواصل مع الفريق عبر واتساب 74193388.' : 'تقدر تحجز مرة ثانية متى ما احتجت.', 'فتح الموقع', SITE_URL));
+      upd['rentals/' + rid + '/returnNotified'] = true;
+    }
+  });
+  if (Object.keys(upd).length) patchRoot_(upd);
+}
+
+/** للتجربة: يرسل إيميل تجريبي لك (ويطلب صلاحية إرسال الإيميل أول مرة) */
+function testEmail() {
+  sendMail_(Session.getEffectiveUser().getEmail(), '✅ تجربة إيميلات صندوق فزعة',
+    mailHtml_('الإيميلات التلقائية شغّالة', [['الحالة', 'تمام']], 'بتوصلك إيميلات الإيصالات الجديدة والتأخير على هذا البريد.', 'فتح لوحة المسؤول', ADMIN_URL));
 }
