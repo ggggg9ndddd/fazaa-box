@@ -222,11 +222,13 @@
       .filter(([, u]) => u.profile)
       .map(([uid, u]) => {
         const p = u.profile, st = u.state || {};
-        const active = st.activeRental ? S.rentals[st.activeRental] : null;
+        const ids = Object.values(st.activeByTool || {});
+        if (st.activeRental && !ids.includes(st.activeRental)) ids.push(st.activeRental);
+        const actives = ids.map(id => S.rentals[id]).filter(Boolean);
         return {
           uid, name: p.name, universityId: p.universityId, phone: p.phone, email: p.email,
           createdAt: p.createdAt, rentals: (counts[uid] || {}).total || 0,
-          status: active ? (FZ.STATUS[active.status] || {}).label + " — " + active.toolName : "لا يوجد حجز",
+          status: actives.length ? actives.map(x => (FZ.STATUS[x.status] || {}).label + " — " + x.toolName).join(" | ") : "لا يوجد حجز",
           fee: st.lateFeeDue || 0
         };
       })
@@ -335,14 +337,14 @@
           if (!confirm(`رفض الطلب ${r.ref}؟`)) return;
           await FZ.db.ref().update({
             [`rentals/${id}/status`]: "rejected",
-            [`users/${r.uid}/state/activeRental`]: null
+            ...clearActive(r, id)
           });
         } else if (a === "rejectReceipt") {
           if (!confirm(`رفض إيصال ${r.ref}؟ سيُلغى الحجز وتعود الأداة متاحة.`)) return;
           await FZ.db.ref().update({
             [`rentals/${id}/status`]: "rejected",
             [`tools/${r.toolId}/status`]: "available",
-            [`users/${r.uid}/state/activeRental`]: null
+            ...clearActive(r, id)
           });
           FZ.toast("تم رفض الإيصال وإلغاء الحجز", "success");
         } else if (a === "cancelPaid") {
@@ -350,7 +352,7 @@
           await FZ.db.ref().update({
             [`rentals/${id}/status`]: "cancelled",
             [`tools/${r.toolId}/status`]: "available",
-            [`users/${r.uid}/state/activeRental`]: null
+            ...clearActive(r, id)
           });
         } else if (a === "manualReturn") {
           if (!confirm("تأكيد أن الأداة أُعيدت إلى الصندوق؟")) return;
@@ -412,6 +414,14 @@
   // =====================================================================
   //  منطق الصندوق — نفس الخطوات التي يجب أن ينفّذها ESP32 عند إدخال رمز
   // =====================================================================
+  // إزالة الحجز من قائمة الحجوزات النشطة للطالب (حجز لكل أداة + دعم الصيغة القديمة)
+  function clearActive(r, rid) {
+    const out = { [`users/${r.uid}/state/activeByTool/${r.toolId}`]: null };
+    const st = (S.users[r.uid] && S.users[r.uid].state) || {};
+    if (st.activeRental === rid) out[`users/${r.uid}/state/activeRental`] = null;
+    return out;
+  }
+
   async function completeReturn(rid) {
     const r = (await FZ.db.ref(`rentals/${rid}`).get()).val();
     if (!r || r.status !== "active") throw new Error("العملية ليست في حالة استئجار نشط");
@@ -423,7 +433,7 @@
       [`rentals/${rid}/returnedAt`]: FZ.TS,
       [`rentals/${rid}/lateFee`]: fee,
       [`tools/${r.toolId}/status`]: "available",
-      [`users/${r.uid}/state/activeRental`]: null
+      ...clearActive(r, rid)
     };
     if (fee > 0) {
       upd[`rentals/${rid}/lateFeePaid`] = false;

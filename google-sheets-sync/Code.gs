@@ -60,11 +60,13 @@ function syncFazza() {
     .filter(uid => users[uid] && users[uid].profile)
     .map(uid => {
       const p = users[uid].profile, st = users[uid].state || {};
-      const active = st.activeRental ? rentals[st.activeRental] : null;
+      const ids = Object.keys(st.activeByTool || {}).map(k => st.activeByTool[k]);
+      if (st.activeRental && ids.indexOf(st.activeRental) === -1) ids.push(st.activeRental);
+      const actives = ids.map(id => rentals[id]).filter(Boolean);
       return [
         p.name || '', String(p.universityId || ''), String(p.phone || ''), p.email || '',
         fmt_(p.createdAt), counts[uid] || 0,
-        active ? (STATUS[active.status] || active.status) + ' — ' + active.toolName : 'لا يوجد حجز',
+        actives.length ? actives.map(x => (STATUS[x.status] || x.status) + ' — ' + x.toolName).join(' | ') : 'لا يوجد حجز',
         omr_(st.lateFeeDue)
       ];
     })

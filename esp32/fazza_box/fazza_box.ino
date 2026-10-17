@@ -168,7 +168,9 @@ void processRequest(const String &id, JsonObject p, uint64_t now) {
     if (fee > 0) upd.set("lateFeePaid", false);
     Firebase.RTDB.updateNode(&fbdo, "/rentals/" + rid, &upd);
     Firebase.RTDB.setString(&fbdo, "/tools/" + toolId + "/status", "available");
-    Firebase.RTDB.deleteNode(&fbdo, "/users/" + uid + "/state/activeRental");
+    Firebase.RTDB.deleteNode(&fbdo, "/users/" + uid + "/state/activeByTool/" + toolId);
+    if (Firebase.RTDB.getString(&fbdo, "/users/" + uid + "/state/activeRental") && fbdo.stringData() == rid)
+      Firebase.RTDB.deleteNode(&fbdo, "/users/" + uid + "/state/activeRental");   // صيغة قديمة
     if (fee > 0) {
       int current = 0;
       if (Firebase.RTDB.getInt(&fbdo, "/users/" + uid + "/state/lateFeeDue")) current = fbdo.intData();

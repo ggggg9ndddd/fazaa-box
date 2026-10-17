@@ -1,20 +1,29 @@
 // =====================================================================
 //  app.js — واجهة الطالب: التسجيل، الاستئجار، رمز الاستلام، الإرجاع
-//  ملاحظة: كل القيود (أداة واحدة، صلاحية الرمز، الحظر بسبب الرسوم...)
+//  ملاحظة: كل القيود (حجز واحد لكل أداة، طلبات الفتح، الحظر بسبب الرسوم...)
 //  مفروضة أيضاً في قواعد Firebase (database.rules.json) وليس هنا فقط.
 // =====================================================================
 (() => {
   const $ = id => document.getElementById(id);
   const { esc, money } = FZ;
 
+  // active: الحجوزات النشطة للطالب (حجز واحد لكل أداة) — { rid: { r, pin, pinCode, rentalRef, pinRef, receiptFile } }
   const S = {
     user: null, profile: null, state: {},
-    tools: {}, rentalId: null, rental: null,
-    pinCode: null, pin: null,
-    selectedTool: null, history: [], registering: false, receiptFile: null
+    tools: {}, active: {},
+    selectedTool: null, history: [], registering: false
   };
-  let userRef = null, rentalRef = null, pinRef = null, historyQuery = null;
+  let userRef = null, historyQuery = null;
   let lastPhase = "";
+
+  // معرّفات الحجوزات النشطة من حالة المستخدم (+ دعم الصيغة القديمة activeRental)
+  function activeIds() {
+    const ids = Object.values(S.state.activeByTool || {});
+    if (S.state.activeRental && !ids.includes(S.state.activeRental)) ids.push(S.state.activeRental);
+    return ids;
+  }
+  const activeList = () => Object.entries(S.active).map(([rid, a]) => ({ rid, ...a })).filter(a => a.r)
+    .sort((x, y) => (x.r.compartment || 0) - (y.r.compartment || 0));
 
   function show(view) {
     document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === view));
@@ -127,7 +136,7 @@
   function detachAll() {
     if (userRef) userRef.off(); userRef = null;
     if (historyQuery) historyQuery.off(); historyQuery = null;
-    attachRental(null);
+    syncActive([]);
   }
 
   FZ.auth.onAuthStateChanged(user => {
@@ -151,8 +160,7 @@
       }
       $("userName").textContent = S.profile.name;
       show("view-main");
-      const rid = S.state.activeRental || null;
-      if (rid !== S.rentalId) attachRental(rid);
+      syncActive(activeIds());
       renderAll();
     }, err => { FZ.toast(FZ.authError(err), "error"); });
 
@@ -165,31 +173,39 @@
     }, () => {});
   });
 
-  function attachRental(rid) {
-    if (rentalRef) rentalRef.off();
-    rentalRef = null; S.rentalId = rid; S.rental = null; S.receiptFile = null;
-    attachPin(null);
-    if (!rid) { renderAll(); return; }
-    rentalRef = FZ.db.ref(`rentals/${rid}`);
-    rentalRef.on("value", s => {
-      const prev = S.rental;
-      S.rental = FZ.withDue(s.val());
-      if (prev && S.rental && prev.status !== S.rental.status) announceStatus(S.rental.status);
-      attachPin(S.rental && S.rental.currentPin);
-      renderAll();
-    }, () => {});
+  // متابعة كل حجز نشط (وطلب الفتح الخاص به) لحظياً
+  function syncActive(ids) {
+    Object.keys(S.active).forEach(rid => {
+      if (ids.includes(rid)) return;
+      const a = S.active[rid];
+      if (a.rentalRef) a.rentalRef.off();
+      if (a.pinRef) a.pinRef.off();
+      delete S.active[rid];
+    });
+    ids.forEach(rid => {
+      if (S.active[rid]) return;
+      const a = S.active[rid] = { r: null, pin: null, pinCode: null, rentalRef: FZ.db.ref(`rentals/${rid}`), pinRef: null, receiptFile: null };
+      a.rentalRef.on("value", s => {
+        const prev = a.r;
+        a.r = FZ.withDue(s.val());
+        if (prev && a.r && prev.status !== a.r.status) announceStatus(a.r.status, a.r.toolName);
+        attachPin(rid, a.r && a.r.currentPin);
+        renderAll();
+      }, () => {});
+    });
   }
 
-  function attachPin(code) {
-    if ((code || null) === S.pinCode) return;
-    if (pinRef) pinRef.off();
-    pinRef = null; S.pinCode = code || null; S.pin = null;
+  function attachPin(rid, code) {
+    const a = S.active[rid];
+    if (!a || (code || null) === a.pinCode) return;
+    if (a.pinRef) a.pinRef.off();
+    a.pinRef = null; a.pinCode = code || null; a.pin = null;
     if (!code) return;
-    pinRef = FZ.db.ref(`pins/${code}`);
-    pinRef.on("value", s => { S.pin = s.val(); renderRental(); }, () => { S.pin = null; renderRental(); });
+    a.pinRef = FZ.db.ref(`pins/${code}`);
+    a.pinRef.on("value", s => { a.pin = s.val(); renderRental(); }, () => { a.pin = null; renderRental(); });
   }
 
-  function announceStatus(status) {
+  function announceStatus(status, toolName) {
     const msgs = {
       paid: "تم تأكيد الدفع ✅ توجّه للصندوق وافتح القسم من الموقع",
       active: "تم فتح القسم — استلم أداتك. لا تنسَ موعد الإرجاع ⏰",
@@ -197,7 +213,7 @@
       rejected: "تم رفض طلبك — تواصل مع المسؤول للاستفسار",
       cancelled: "تم إلغاء الطلب"
     };
-    if (msgs[status]) FZ.toast(msgs[status], status === "rejected" ? "error" : "success");
+    if (msgs[status]) FZ.toast((toolName ? toolName + ": " : "") + msgs[status], status === "rejected" ? "error" : "success");
   }
 
   // -------------------- العرض --------------------
@@ -215,24 +231,24 @@
       out.push(`<div class="banner banner-danger"><strong>عليك رسوم تأخير: ${money(fee)}</strong>
         لا يمكنك استئجار أداة جديدة حتى تسويتها. حوّل المبلغ وتواصل مع المسؤول.</div>`);
     }
-    if (!FZ.box.online && (S.rental && ["paid", "active"].includes(S.rental.status))) {
+    if (!FZ.box.online && activeList().some(a => ["paid", "active"].includes(a.r.status))) {
       out.push(`<div class="banner banner-warn"><strong>الصندوق غير متصل حالياً.</strong>
-        الأقفال مغلقة ولا يمكن إنشاء رموز أو استخدامها حتى يعود الاتصال.</div>`);
+        الأقفال مغلقة ولا يمكن فتح الأقسام حتى يعود الاتصال.</div>`);
     }
     $("alerts").innerHTML = out.join("");
   }
 
   // حالة طلب فتح القسم: الشريحة داخل الصندوق تنفّذه مباشرة (بدون لوحة أرقام)
-  function unlockState(type) {
-    const p = S.pin;
+  function unlockState(a, type) {
+    const p = a.pin;
     if (!p || p.type !== type) return { kind: "none" };
     if (p.used) return { kind: "done" };
     if (FZ.now() - p.createdAt > FZ.UNLOCK_TTL) return { kind: "timeout" };
     return { kind: "waiting" };
   }
 
-  function openBlock(type, compartment) {
-    const us = unlockState(type);
+  function openBlock(a, type, compartment) {
+    const us = unlockState(a, type);
     if (us.kind === "waiting") {
       return `<div class="unlock-wait"><div class="loader small"></div>
           <b>جارٍ فتح القسم رقم ${compartment}…</b>
@@ -242,14 +258,15 @@
       ? `<p class="hint warn">لم يستجب الصندوق. تأكد أنه متصل وحاول مرة أخرى، أو تواصل مع الفريق.</p>` : "";
     const label = type === "pickup" ? `🔓 افتح القسم رقم ${compartment} الآن` : `🔓 افتح القسم رقم ${compartment} للإرجاع`;
     return `${note}
-      <button class="btn btn-accent btn-block btn-open" data-action="open" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>${label}</button>
+      <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>${label}</button>
       ${FZ.box.online
         ? `<p class="hint">اضغط الزر وأنت واقف عند الصندوق — سيُفتح القفل مباشرة.</p>`
         : `<p class="hint warn">الصندوق غير متصل حالياً، لا يمكن فتحه.</p>`}`;
   }
 
   // رفع إيصال التحويل (يُحفظ في Google Drive ويؤكد الحجز تلقائياً)
-  function receiptBlock(r) {
+  function receiptBlock(a) {
+    const r = a.r;
     if (r.receiptUrl) {
       return `<div class="banner banner-info">تم استلام إيصالك (${FZ.fmtTime(r.receiptAt)}). الأداة كانت محجوزة لحظة الرفع، لذلك سيراجع المسؤول طلبك قريباً.</div>`;
     }
@@ -257,25 +274,27 @@
       // احتياطي: بدون رابط رفع الإيصالات نرجع للطريقة القديمة (موافقة المسؤول)
       return r.paymentClaimedAt
         ? `<div class="banner banner-info">تم إبلاغ المسؤول بالتحويل (${FZ.fmtTime(r.paymentClaimedAt)}). سيتم التحقق والموافقة قريباً.</div>`
-        : `<button class="btn btn-accent btn-block" data-action="claim">حوّلت المبلغ ✔</button>`;
+        : `<button class="btn btn-accent btn-block" data-action="claim" data-rid="${a.rid}">حوّلت المبلغ ✔</button>`;
     }
-    const f = S.receiptFile;
+    const f = a.receiptFile;
     return `
       <div class="receipt-box">
         <label class="receipt-drop">
-          <input type="file" id="receiptFile" accept="image/*,application/pdf">
+          <input type="file" class="receipt-input" data-rid="${a.rid}" accept="image/*,application/pdf">
           <span class="receipt-icon">🧾</span>
           <b>${f ? esc(f.name) : "اضغط لإرفاق صورة إيصال التحويل"}</b>
           <span class="muted small">${f ? `${(f.size / 1024 / 1024).toFixed(1)} MB — اضغط للتغيير` : "صورة أو لقطة شاشة أو PDF"}</span>
         </label>
-        <button class="btn btn-accent btn-block" data-action="uploadReceipt" ${f ? "" : "disabled"}>رفع الإيصال وتأكيد الحجز</button>
+        <button class="btn btn-accent btn-block" data-action="uploadReceipt" data-rid="${a.rid}" ${f ? "" : "disabled"}>رفع الإيصال وتأكيد الحجز</button>
         <p class="hint">يُؤكَّد حجزك فوراً بعد رفع الإيصال. الإيصالات تُراجَع، وأي إيصال غير صحيح يُلغى معه الحجز.</p>
       </div>`;
   }
 
   document.addEventListener("change", e => {
-    if (e.target.id !== "receiptFile") return;
-    S.receiptFile = e.target.files[0] || null;
+    if (!e.target.classList.contains("receipt-input")) return;
+    const a = S.active[e.target.dataset.rid];
+    if (!a) return;
+    a.receiptFile = e.target.files[0] || null;
     renderRental();
   });
 
@@ -305,8 +324,9 @@
     });
   }
 
-  async function uploadReceipt() {
-    const f = S.receiptFile;
+  async function uploadReceipt(rid) {
+    const a = S.active[rid];
+    const f = a && a.receiptFile;
     if (!f) return FZ.toast("اختر صورة الإيصال أولاً", "error");
     let blob = f, mime = f.type || "application/octet-stream";
     if (mime.startsWith("image/") && mime !== "image/heic") {
@@ -318,11 +338,11 @@
       const idToken = await FZ.auth.currentUser.getIdToken();
       const res = await fetch(RECEIPT_ENDPOINT, {
         method: "POST",
-        body: JSON.stringify({ idToken, rentalId: S.rentalId, mimeType: mime, data: await toBase64(blob) })
+        body: JSON.stringify({ idToken, rentalId: rid, mimeType: mime, data: await toBase64(blob) })
       });
       const j = await res.json();
       FZ.toast(j.msg || "تم", j.ok ? "success" : "error");
-      if (j.ok) S.receiptFile = null;
+      if (j.ok && S.active[rid]) S.active[rid].receiptFile = null;
     } catch (err) {
       FZ.toast("تعذّر رفع الإيصال، تحقق من الإنترنت وحاول مرة أخرى", "error");
     }
@@ -332,12 +352,16 @@
 
   function renderRental() {
     const el = $("rentalPanel");
-    $("toolsPanel").style.display = S.rentalId ? "none" : "";
-    if (!S.rentalId) { el.innerHTML = ""; lastPhase = ""; return; }
-    const r = S.rental;
-    if (!r) { el.innerHTML = `<div class="card"><div class="loader small"></div></div>`; return; }
+    const ids = activeIds();
+    if (!ids.length) { el.innerHTML = ""; lastPhase = ""; return; }
     lastPhase = phaseKey();
+    const list = activeList();
+    const loading = ids.length > list.length ? `<div class="card"><div class="loader small"></div></div>` : "";
+    el.innerHTML = list.map(rentalCard).join("") + loading;
+  }
 
+  function rentalCard(a) {
+    const r = a.r;
     const head = `<div class="rental-head"><h2 class="section-title">${esc(r.toolName)}</h2>${FZ.badge(FZ.STATUS, r.status)}</div>`;
     const summary = `<div class="kv-list">
         ${row("المدة", FZ.planLabel(r.hours))}
@@ -347,8 +371,8 @@
     let body = "";
 
     if (r.status === "pending") {
-      const accounts = (PAYMENT_INFO.accounts || []).map(a =>
-        `<p><strong>${esc(a.label)}:</strong> <span class="account-number">${esc(a.value)}</span></p>`).join("");
+      const accounts = (PAYMENT_INFO.accounts || []).map(x =>
+        `<p><strong>${esc(x.label)}:</strong> <span class="account-number">${esc(x.value)}</span></p>`).join("");
       body = `
         <div class="payment-info">
           <p>حوّل <strong>${money(r.amount)}</strong> إلى أحد الحسابات التالية:</p>
@@ -356,14 +380,14 @@
           <p class="mt-12">اكتب هذا <strong>الرمز المرجعي</strong> في ملاحظة/وصف التحويل:</p>
           <div class="ref-code" dir="ltr">${esc(r.ref)}</div>
         </div>
-        ${receiptBlock(r)}
-        <button class="btn btn-whatsapp btn-block" data-action="whatsapp">احفظ بيانات حجزك عبر واتساب 📲</button>
-        ${r.paymentClaimedAt || r.receiptUrl ? "" : `<button class="btn-link mt-12" data-action="cancel">إلغاء الطلب</button>`}`;
+        ${receiptBlock(a)}
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ بيانات حجزك عبر واتساب 📲</button>
+        ${r.paymentClaimedAt || r.receiptUrl ? "" : `<button class="btn-link mt-12" data-action="cancel" data-rid="${a.rid}">إلغاء الطلب</button>`}`;
     } else if (r.status === "paid") {
       body = `
         <div class="banner banner-success">تم تأكيد الدفع ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
         <p class="hint">مدة الاستئجار تبدأ لحظة فتح القسم.</p>
-        ${openBlock("pickup", r.compartment)}`;
+        ${openBlock(a, "pickup", r.compartment)}`;
     } else if (r.status === "active") {
       const t = FZ.now();
       let due;
@@ -386,19 +410,22 @@
       body = `${due}
         <h3 class="sub-title">إرجاع الأداة</h3>
         <p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
-        ${openBlock("return", r.compartment)}`;
+        ${openBlock(a, "return", r.compartment)}`;
+    } else {
+      body = `<p class="hint">جارٍ التحديث…</p>`;
     }
-
-    el.innerHTML = `<div class="card rental-card">${head}${summary}${body}</div>`;
+    return `<div class="card rental-card">${head}${summary}${body}</div>`;
   }
 
   // مفتاح يتغير عند تجاوز حدّ زمني (انتهاء رمز / انتهاء المدة / انتهاء السماح) لإعادة الرسم
   function phaseKey() {
-    const r = S.rental; if (!r) return "";
     const t = FZ.now();
-    const pinValid = S.pin && !S.pin.used && t - S.pin.createdAt <= FZ.UNLOCK_TTL;
-    const duePhase = r.dueAt ? (t < r.dueAt ? 0 : t < r.dueAt + FZ.GRACE ? 1 : 2) : -1;
-    return `${r.status}|${pinValid}|${duePhase}`;
+    return activeList().map(a => {
+      const r = a.r;
+      const pinValid = a.pin && !a.pin.used && t - a.pin.createdAt <= FZ.UNLOCK_TTL;
+      const duePhase = r.dueAt ? (t < r.dueAt ? 0 : t < r.dueAt + FZ.GRACE ? 1 : 2) : -1;
+      return `${a.rid}:${r.status}|${pinValid}|${duePhase}`;
+    }).join(",");
   }
 
   function renderTools() {
@@ -406,11 +433,17 @@
     const ids = Object.keys(S.tools).sort((a, b) => (S.tools[a].compartment || 0) - (S.tools[b].compartment || 0));
     if (!ids.length) { grid.innerHTML = `<p class="muted">لا توجد أدوات بعد.</p>`; return; }
     const blocked = (S.state.lateFeeDue || 0) > 0;
+    const mine = new Set(activeList().map(a => a.r.toolId).concat(Object.keys(S.state.activeByTool || {})));
     grid.innerHTML = ids.map(id => {
       const t = S.tools[id];
       const plans = Object.values(t.plans || {}).sort((a, b) => a.hours - b.hours);
       const from = plans.length ? plans[0].amount : null;
       const avail = t.status === "available";
+      if (mine.has(id)) {
+        return `<div class="tool-card is-off">
+            <div class="tool-info"><h3>${esc(t.name)}</h3><p class="tool-price">لديك حجز لهذه الأداة — تجده بالأعلى ⬆️</p></div>
+          </div>`;
+      }
       return `<div class="tool-card ${avail ? "" : "is-off"}">
           <div class="tool-info">
             <h3>${esc(t.name)}</h3>
@@ -439,7 +472,7 @@
           </label>`).join("")}
       </div>
       <ul class="rules-list">
-        <li>أداة واحدة فقط لكل طالب في نفس الوقت.</li>
+        <li>تقدر تحجز أكثر من أداة، وكل أداة لها حجز ودفع وإرجاع مستقل.</li>
         <li>بعد انتهاء المدة لديك ساعة سماح، بعدها تُسجَّل رسوم تأخير (${money(t.lateFeePerHour)} لكل ساعة) ويُمنع الاستئجار حتى تسويتها.</li>
       </ul>
       <button class="btn btn-block mt-20" data-action="book">تأكيد الطلب والانتقال للدفع</button>`;
@@ -453,7 +486,8 @@
   $("planBack").addEventListener("click", goTools);
 
   function renderHistory() {
-    const list = S.history.filter(h => h.id !== S.rentalId).slice(0, 5);
+    const act = activeIds();
+    const list = S.history.filter(h => !act.includes(h.id)).slice(0, 5);
     if (!list.length) { $("historyPanel").innerHTML = ""; return; }
     $("historyPanel").innerHTML = `
       <h2 class="section-title mt-24">طلباتي السابقة</h2>
@@ -470,7 +504,7 @@
   document.addEventListener("click", async e => {
     const btn = e.target.closest("[data-action]");
     if (!btn || btn.disabled) return;
-    const a = btn.dataset.action;
+    const a = btn.dataset.action, rid = btn.dataset.rid;
     if (a === "select") {
       S.selectedTool = btn.dataset.tool;
       renderPlans();
@@ -479,25 +513,27 @@
     } else if (a === "book") {
       await FZ.withBusy(btn, createRental);
     } else if (a === "uploadReceipt") {
-      await FZ.withBusy(btn, uploadReceipt);
+      await FZ.withBusy(btn, () => uploadReceipt(rid));
     } else if (a === "claim") {
-      await FZ.withBusy(btn, () => FZ.db.ref(`rentals/${S.rentalId}/paymentClaimedAt`).set(FZ.TS)
+      await FZ.withBusy(btn, () => FZ.db.ref(`rentals/${rid}/paymentClaimedAt`).set(FZ.TS)
         .then(() => FZ.toast("تم إبلاغ المسؤول، انتظر الموافقة", "success"))
         .catch(err => FZ.toast(FZ.authError(err), "error")));
     } else if (a === "cancel") {
       if (!confirm("هل تريد إلغاء الطلب؟")) return;
-      await FZ.withBusy(btn, () => FZ.db.ref().update({
-        [`rentals/${S.rentalId}/status`]: "cancelled",
-        [`users/${S.user.uid}/state/activeRental`]: null
-      }).catch(err => FZ.toast(FZ.authError(err), "error")));
+      const r = S.active[rid] && S.active[rid].r;
+      if (!r) return;
+      const upd = { [`rentals/${rid}/status`]: "cancelled" };
+      if (S.state.activeByTool && S.state.activeByTool[r.toolId] === rid) upd[`users/${S.user.uid}/state/activeByTool/${r.toolId}`] = null;
+      else upd[`users/${S.user.uid}/state/activeRental`] = null;
+      await FZ.withBusy(btn, () => FZ.db.ref().update(upd).catch(err => FZ.toast(FZ.authError(err), "error")));
     } else if (a === "open") {
       const ok = confirm(btn.dataset.type === "pickup"
         ? "هل أنت واقف عند الصندوق الآن؟ سيُفتح القفل مباشرة."
         : "هل أنت عند الصندوق والأداة معك؟ سيُفتح القفل مباشرة.");
       if (!ok) return;
-      await FZ.withBusy(btn, () => generatePin(btn.dataset.type));
+      await FZ.withBusy(btn, () => generatePin(rid, btn.dataset.type));
     } else if (a === "whatsapp") {
-      sendToWhatsApp();
+      sendToWhatsApp(rid);
     }
   });
 
@@ -516,12 +552,12 @@
           plan: planKey, hours: plan.hours, amount: plan.amount,
           ref, status: "pending", createdAt: FZ.TS
         },
-        [`users/${S.user.uid}/state/activeRental`]: rid
+        [`users/${S.user.uid}/state/activeByTool/${toolId}`]: rid
       });
       goTools();
       FZ.toast("تم إنشاء الطلب — حوّل المبلغ مع الرمز المرجعي", "success");
     } catch (err) {
-      FZ.toast("تعذّر إنشاء الطلب: قد تكون الأداة لم تعد متاحة، أو لديك طلب قائم أو رسوم غير مسددة.", "error");
+      FZ.toast("تعذّر إنشاء الطلب: قد تكون الأداة لم تعد متاحة، أو لديك حجز لنفس الأداة أو رسوم غير مسددة.", "error");
     }
   }
 
@@ -531,8 +567,8 @@
     return String(a[0] % 1000000).padStart(6, "0");
   }
 
-  async function generatePin(type) {
-    const r = S.rental;
+  async function generatePin(rid, type) {
+    const r = S.active[rid] && S.active[rid].r;
     if (!r) return;
     if (!FZ.box.online) return FZ.toast("الصندوق غير متصل حالياً", "error");
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -540,10 +576,10 @@
       try {
         await FZ.db.ref().update({
           [`pins/${code}`]: {
-            uid: S.user.uid, rentalId: S.rentalId, compartment: r.compartment,
+            uid: S.user.uid, rentalId: rid, compartment: r.compartment,
             type, createdAt: FZ.TS, used: false
           },
-          [`rentals/${S.rentalId}/currentPin`]: code
+          [`rentals/${rid}/currentPin`]: code
         });
         return; // نجح — المستمع سيعرض الرمز
       } catch (err) { /* غالباً تعارض مع رمز آخر فعّال — نجرب رقماً آخر */ }
@@ -551,8 +587,8 @@
     FZ.toast("تعذّر إرسال طلب الفتح. تأكد أن الصندوق متصل وحاول مجدداً.", "error");
   }
 
-  function sendToWhatsApp() {
-    const r = S.rental;
+  function sendToWhatsApp(rid) {
+    const r = S.active[rid] && S.active[rid].r;
     if (!r || !S.profile) return;
     const msg = `*تفاصيل حجز صندوق فزعة* ⚡\n\n` +
       `*الأداة:* ${r.toolName}\n*الاسم:* ${S.profile.name}\n*الرقم الجامعي:* ${S.profile.universityId}\n` +
@@ -562,16 +598,18 @@
   }
 
   // -------------------- العدّادات --------------------
-  let alerted = "";
+  const alerted = new Set();
   FZ.startCountdowns(() => {
-    if (!S.rental) return;
+    const list = activeList();
+    if (!list.length) return;
     if (phaseKey() !== lastPhase) {
       renderRental(); renderAlerts();
-      const r = S.rental;
-      if (r.status === "active" && FZ.now() >= r.dueAt && alerted !== S.rentalId) {
-        alerted = S.rentalId;
-        FZ.toast("⏰ انتهت مدة الاستئجار — أرجع الأداة الآن", "error");
-      }
+      list.forEach(a => {
+        if (a.r.status === "active" && FZ.now() >= a.r.dueAt && !alerted.has(a.rid)) {
+          alerted.add(a.rid);
+          FZ.toast(`⏰ انتهت مدة استئجار ${a.r.toolName} — أرجعها الآن`, "error");
+        }
+      });
     }
   });
 })();
