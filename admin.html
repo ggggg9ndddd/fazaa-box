@@ -97,6 +97,16 @@
                     </section>
 
                     <section class="admin-section">
+                        <h2 class="section-title">👮 المشرفون</h2>
+                        <p class="hint text-start">لازم الشخص يسجّل دخول مرة في موقع الحجز (ويكمل بياناته) قبل ما تضيفه.</p>
+                        <form id="addAdminForm" class="add-admin">
+                            <input type="text" id="adminInput" class="form-control" placeholder="إيميل المشرف (أو رقم UID)" required>
+                            <button type="submit" class="btn btn-sm btn-accent">➕ إضافة</button>
+                        </form>
+                        <div id="secAdmins"></div>
+                    </section>
+
+                    <section class="admin-section">
                         <h2 class="section-title">⚠️ رسوم التأخير غير المسددة</h2>
                         <div id="secFees"></div>
                     </section>

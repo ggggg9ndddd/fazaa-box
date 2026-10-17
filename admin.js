@@ -17,7 +17,7 @@
     }
   };
 
-  const S = { rentals: {}, users: {}, tools: {}, pins: {}, opened: {}, editingTool: null };
+  const S = { rentals: {}, users: {}, tools: {}, pins: {}, admins: {}, opened: {}, editingTool: null };
   const refs = [];
 
   function show(view) {
@@ -74,6 +74,7 @@
     listen("rentals", FZ.db.ref("rentals").limitToLast(300), v => { Object.values(v).forEach(FZ.withDue); S.rentals = v; });
     listen("users", FZ.db.ref("users"), v => S.users = v);
     listen("tools", FZ.db.ref("tools"), v => S.tools = v);
+    listen("admins", FZ.db.ref("admins"), v => S.admins = v);
     listen("pins", FZ.db.ref("pins").orderByChild("createdAt").limitToLast(30), v => S.pins = v);
   });
 
@@ -100,7 +101,7 @@
   function renderAll() {
     renderStats();
     renderPending(); renderPaid(); renderActive();
-    renderFees(); renderTools(); renderHistory(); renderCompartments(); renderUsers(); renderUnlocks();
+    renderFees(); renderTools(); renderHistory(); renderCompartments(); renderUsers(); renderUnlocks(); renderAdmins();
   }
 
   function renderStats() {
@@ -174,6 +175,47 @@
         </div>`;
     }).join("") : empty("لا توجد أدوات مستأجرة.");
   }
+
+  // -------------------- المشرفون --------------------
+  function renderAdmins() {
+    const me = FZ.auth.currentUser && FZ.auth.currentUser.uid;
+    const ids = Object.keys(S.admins || {}).filter(id => S.admins[id] === true);
+    $("secAdmins").innerHTML = ids.map(uid => {
+      const p = (S.users[uid] && S.users[uid].profile) || {};
+      const label = p.name ? `<b>${esc(p.name)}</b> <span class="muted small" dir="ltr">${esc(p.email || "")}</span>`
+        : `<span class="muted small" dir="ltr">${esc(uid)}</span>`;
+      return `<div class="admin-card admin-row">
+          <div>${label}${uid === me ? ` <span class="badge badge-active">أنت</span>` : ""}</div>
+          ${uid === me ? "" : `<button class="btn btn-sm btn-ghost" data-action="removeAdmin" data-uid="${esc(uid)}">إزالة</button>`}
+        </div>`;
+    }).join("") || empty("لا يوجد مشرفون.");
+  }
+
+  $("addAdminForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const q = $("adminInput").value.trim();
+    if (!q) return;
+    let uid = null;
+    if (q.includes("@")) {
+      const found = Object.entries(S.users).find(([, u]) => u.profile && (u.profile.email || "").toLowerCase() === q.toLowerCase());
+      if (!found) return FZ.toast("ما لقيت مستخدم بهذا الإيميل — خلّه يسجّل دخول في موقع الحجز ويكمل بياناته أولاً", "error");
+      uid = found[0];
+    } else if (/^[A-Za-z0-9]{20,40}$/.test(q)) {
+      uid = q;
+    } else {
+      return FZ.toast("اكتب إيميل صحيح أو رقم UID", "error");
+    }
+    if (S.admins && S.admins[uid] === true) return FZ.toast("هذا الشخص مشرف أصلاً", "error");
+    const p = (S.users[uid] && S.users[uid].profile) || {};
+    if (!confirm(`إضافة ${p.name || uid} كمشرف؟ بيقدر يشوف كل البيانات ويوافق ويرفض الحجوزات.`)) return;
+    await FZ.withBusy(e.submitter, async () => {
+      try {
+        await FZ.db.ref(`admins/${uid}`).set(true);
+        $("adminInput").value = "";
+        FZ.toast("تمت إضافة المشرف ✅ يدخل من صفحة لوحة المسؤول", "success");
+      } catch (err) { FZ.toast(FZ.authError(err), "error"); }
+    });
+  });
 
   function renderFees() {
     const users = Object.entries(S.users).filter(([, u]) => u.state && u.state.lateFeeDue > 0);
@@ -415,6 +457,12 @@
           exportUsers();
         } else if (a === "exportRentals") {
           exportRentals();
+        } else if (a === "removeAdmin") {
+          const uid = btn.dataset.uid;
+          const p = (S.users[uid] && S.users[uid].profile) || {};
+          if (!confirm(`إزالة ${p.name || uid} من المشرفين؟`)) return;
+          await FZ.db.ref(`admins/${uid}`).remove();
+          FZ.toast("تمت إزالة المشرف", "success");
         } else if (a === "toolAdd") {
           S.editingTool = NEW_TOOL; renderTools(true);
         } else if (a === "toolDelete") {

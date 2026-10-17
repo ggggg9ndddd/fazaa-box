@@ -541,3 +541,8 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 }
 .unlock-empty { color: #94A3B8; text-align: center; padding: 8px; }
 .mb-12 { margin-bottom: 12px; }
+
+/* المشرفون */
+.add-admin { display: flex; gap: 8px; margin-bottom: 10px; }
+.add-admin .form-control { flex: 1; padding: 8px 10px; }
+.admin-row { flex-direction: row; justify-content: space-between; align-items: center; }
