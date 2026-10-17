@@ -415,11 +415,11 @@
             رسوم التأخير حتى الآن: <b>${money(fee)}</b> وتزيد كل ساعة.
             لن تتمكن من الاستئجار مجدداً حتى تسويتها.</div>`;
       }
-      const returnSection = t < r.dueAt
-        ? `<div class="banner banner-info">🔒 خانة <b>إرجاع الأداة</b> بتظهر لك هنا بعد انتهاء مدة الاستئجار.</div>`
-        : `<h3 class="sub-title">إرجاع الأداة</h3>
-        <p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
-        ${openBlock(a, "return", r.compartment)}`;
+      const returnSection = `<h3 class="sub-title">إرجاع الأداة</h3>` + (t < r.dueAt
+        ? `<p class="hint">زر الإرجاع يتفعّل بعد انتهاء مدة الاستئجار، وبعدها تفتح <b>القسم رقم ${r.compartment}</b> وتضع الأداة داخله.</p>
+        <button class="btn btn-primary btn-block btn-lg" disabled>🔒 يتفعّل بعد <span data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</span></button>`
+        : `<p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
+        ${openBlock(a, "return", r.compartment)}`);
       body = `${due}
         ${returnSection}
         <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ موعد الإرجاع عبر واتساب 📲</button>`;
