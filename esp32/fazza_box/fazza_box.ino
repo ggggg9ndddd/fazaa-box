@@ -120,6 +120,11 @@ void processRequest(const String &id, JsonObject p, uint64_t now) {
   bool pickup = (type == "pickup" && status == "paid");
   bool ret    = (type == "return" && status == "active");
   if (!pickup && !ret) { Serial.println("[REQ] حالة الحجز لا تسمح — تجاهل"); return; }
+  if (ret) {
+    uint64_t due0 = r["dueAt"] | (uint64_t)0;
+    if (!due0) due0 = (r["startAt"] | (uint64_t)0) + (uint64_t)(r["hours"] | 0) * HOUR_MS;
+    if (now < due0) { Serial.println("[REQ] الإرجاع قبل انتهاء المدة — تجاهل"); return; }
+  }
 
   // 1) تعليم الطلب كمستخدم أولاً حتى لا يُنفَّذ مرتين
   FirebaseJson used;

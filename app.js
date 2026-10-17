@@ -415,10 +415,13 @@
             رسوم التأخير حتى الآن: <b>${money(fee)}</b> وتزيد كل ساعة.
             لن تتمكن من الاستئجار مجدداً حتى تسويتها.</div>`;
       }
-      body = `${due}
-        <h3 class="sub-title">إرجاع الأداة</h3>
+      const returnSection = t < r.dueAt
+        ? `<div class="banner banner-info">🔒 خانة <b>إرجاع الأداة</b> بتظهر لك هنا بعد انتهاء مدة الاستئجار.</div>`
+        : `<h3 class="sub-title">إرجاع الأداة</h3>
         <p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
-        ${openBlock(a, "return", r.compartment)}
+        ${openBlock(a, "return", r.compartment)}`;
+      body = `${due}
+        ${returnSection}
         <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ موعد الإرجاع عبر واتساب 📲</button>`;
     } else {
       body = `<p class="hint">جارٍ التحديث…</p>`;
@@ -580,6 +583,7 @@
     const r = S.active[rid] && S.active[rid].r;
     if (!r) return;
     if (!FZ.box.online) return FZ.toast("الصندوق غير متصل حالياً", "error");
+    if (type === "return" && FZ.now() < (r.dueAt || 0)) return FZ.toast("الإرجاع متاح بعد انتهاء مدة الاستئجار", "error");
     for (let attempt = 0; attempt < 4; attempt++) {
       const code = randomPin();
       try {

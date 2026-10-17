@@ -563,6 +563,7 @@
     if (r.compartment !== p.compartment) return { ok: false, msg: "الرمز لا يخص هذا القسم" };
     if (p.type === "pickup" && r.status !== "paid") return { ok: false, msg: "العملية ليست جاهزة للاستلام" };
     if (p.type === "return" && r.status !== "active") return { ok: false, msg: "لا يوجد استئجار نشط لإرجاعه" };
+    if (p.type === "return" && t < (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR))) return { ok: false, msg: "الإرجاع متاح بعد انتهاء مدة الاستئجار فقط" };
 
     // حجز الرمز ذرّياً حتى لا يُستخدم مرتين
     const tx = await FZ.db.ref(`pins/${code}/used`).transaction(u => (u ? undefined : true));
