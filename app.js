@@ -11,7 +11,7 @@
     user: null, profile: null, state: {},
     tools: {}, rentalId: null, rental: null,
     pinCode: null, pin: null,
-    selectedTool: null, history: [], registering: false
+    selectedTool: null, history: [], registering: false, receiptFile: null
   };
   let userRef = null, rentalRef = null, pinRef = null, historyQuery = null;
   let lastPhase = "";
@@ -138,7 +138,7 @@
 
   function attachRental(rid) {
     if (rentalRef) rentalRef.off();
-    rentalRef = null; S.rentalId = rid; S.rental = null;
+    rentalRef = null; S.rentalId = rid; S.rental = null; S.receiptFile = null;
     attachPin(null);
     if (!rid) { renderAll(); return; }
     rentalRef = FZ.db.ref(`rentals/${rid}`);
@@ -222,6 +222,86 @@
       ${FZ.box.online ? `<p class="hint">الرمز صالح لمدة 10 دقائق فقط، لذا أنشئه وأنت عند الصندوق.</p>` : `<p class="hint warn">لا يمكن إنشاء رمز والصندوق غير متصل.</p>`}`;
   }
 
+  // رفع إيصال التحويل (يُحفظ في Google Drive ويؤكد الحجز تلقائياً)
+  function receiptBlock(r) {
+    if (r.receiptUrl) {
+      return `<div class="banner banner-info">تم استلام إيصالك (${FZ.fmtTime(r.receiptAt)}). الأداة كانت محجوزة لحظة الرفع، لذلك سيراجع المسؤول طلبك قريباً.</div>`;
+    }
+    if (typeof RECEIPT_ENDPOINT === "undefined" || !RECEIPT_ENDPOINT) {
+      // احتياطي: بدون رابط رفع الإيصالات نرجع للطريقة القديمة (موافقة المسؤول)
+      return r.paymentClaimedAt
+        ? `<div class="banner banner-info">تم إبلاغ المسؤول بالتحويل (${FZ.fmtTime(r.paymentClaimedAt)}). سيتم التحقق والموافقة قريباً.</div>`
+        : `<button class="btn btn-accent btn-block" data-action="claim">حوّلت المبلغ ✔</button>`;
+    }
+    const f = S.receiptFile;
+    return `
+      <div class="receipt-box">
+        <label class="receipt-drop">
+          <input type="file" id="receiptFile" accept="image/*,application/pdf">
+          <span class="receipt-icon">🧾</span>
+          <b>${f ? esc(f.name) : "اضغط لإرفاق صورة إيصال التحويل"}</b>
+          <span class="muted small">${f ? `${(f.size / 1024 / 1024).toFixed(1)} MB — اضغط للتغيير` : "صورة أو لقطة شاشة أو PDF"}</span>
+        </label>
+        <button class="btn btn-accent btn-block" data-action="uploadReceipt" ${f ? "" : "disabled"}>رفع الإيصال وتأكيد الحجز</button>
+        <p class="hint">يُؤكَّد حجزك فوراً بعد رفع الإيصال. الإيصالات تُراجَع، وأي إيصال غير صحيح يُلغى معه الحجز.</p>
+      </div>`;
+  }
+
+  document.addEventListener("change", e => {
+    if (e.target.id !== "receiptFile") return;
+    S.receiptFile = e.target.files[0] || null;
+    renderRental();
+  });
+
+  function compressImage(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1600, scale = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => resolve(b || file), "image/jpeg", 0.82);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); }; // صيغة لا يفتحها المتصفح (مثل HEIC) — نرسلها كما هي
+      img.src = url;
+    });
+  }
+
+  function toBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result).split(",")[1]);
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  async function uploadReceipt() {
+    const f = S.receiptFile;
+    if (!f) return FZ.toast("اختر صورة الإيصال أولاً", "error");
+    let blob = f, mime = f.type || "application/octet-stream";
+    if (mime.startsWith("image/") && mime !== "image/heic") {
+      const out = await compressImage(f);
+      if (out !== f) { blob = out; mime = "image/jpeg"; }
+    }
+    if (blob.size > 6 * 1024 * 1024) return FZ.toast("الملف كبير جداً — الحد 6MB", "error");
+    try {
+      const idToken = await FZ.auth.currentUser.getIdToken();
+      const res = await fetch(RECEIPT_ENDPOINT, {
+        method: "POST",
+        body: JSON.stringify({ idToken, rentalId: S.rentalId, mimeType: mime, data: await toBase64(blob) })
+      });
+      const j = await res.json();
+      FZ.toast(j.msg || "تم", j.ok ? "success" : "error");
+      if (j.ok) S.receiptFile = null;
+    } catch (err) {
+      FZ.toast("تعذّر رفع الإيصال، تحقق من الإنترنت وحاول مرة أخرى", "error");
+    }
+  }
+
   function row(k, v) { return `<div class="kv"><span>${k}</span><strong>${v}</strong></div>`; }
 
   function renderRental() {
@@ -250,11 +330,9 @@
           <p class="mt-12">اكتب هذا <strong>الرمز المرجعي</strong> في ملاحظة/وصف التحويل:</p>
           <div class="ref-code" dir="ltr">${esc(r.ref)}</div>
         </div>
-        ${r.paymentClaimedAt
-          ? `<div class="banner banner-info">تم إبلاغ المسؤول بالتحويل (${FZ.fmtTime(r.paymentClaimedAt)}). سيتم التحقق والموافقة قريباً.</div>`
-          : `<button class="btn btn-accent btn-block" data-action="claim">حوّلت المبلغ ✔</button>`}
+        ${receiptBlock(r)}
         <button class="btn btn-whatsapp btn-block" data-action="whatsapp">احفظ بيانات حجزك عبر واتساب 📲</button>
-        ${r.paymentClaimedAt ? "" : `<button class="btn-link mt-12" data-action="cancel">إلغاء الطلب</button>`}`;
+        ${r.paymentClaimedAt || r.receiptUrl ? "" : `<button class="btn-link mt-12" data-action="cancel">إلغاء الطلب</button>`}`;
     } else if (r.status === "paid") {
       body = `
         <div class="banner banner-success">تم تأكيد الدفع ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
@@ -374,6 +452,8 @@
       $("step-plan").classList.add("active");
     } else if (a === "book") {
       await FZ.withBusy(btn, createRental);
+    } else if (a === "uploadReceipt") {
+      await FZ.withBusy(btn, uploadReceipt);
     } else if (a === "claim") {
       await FZ.withBusy(btn, () => FZ.db.ref(`rentals/${S.rentalId}/paymentClaimedAt`).set(FZ.TS)
         .then(() => FZ.toast("تم إبلاغ المسؤول، انتظر الموافقة", "success"))

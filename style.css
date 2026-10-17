@@ -504,3 +504,17 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 .users-table td { padding: 9px 8px; border-top: 1px solid var(--border-color); vertical-align: top; }
 .users-table tr:nth-child(even) td { background: #FAFBFC; }
 .users-table a { color: #15803D; font-weight: 700; text-decoration: none; }
+
+/* رفع الإيصال */
+.receipt-box { margin: 4px 0 12px; }
+.receipt-drop {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    border: 2px dashed var(--accent-gold); border-radius: var(--radius-md); background: #FFFDF5;
+    padding: 18px 12px; margin-bottom: 10px; cursor: pointer; transition: var(--transition);
+}
+.receipt-drop:hover { background: #FFF8DC; }
+.receipt-drop input { display: none; }
+.receipt-icon { font-size: 1.8rem; }
+.receipt-link { font-size: 0.85rem; font-weight: 700; color: var(--secondary-navy); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #B91C1C; }

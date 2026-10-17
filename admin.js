@@ -100,7 +100,8 @@
           ${student(r.uid)}
           <div class="small">${esc(r.toolName)} · ${FZ.planLabel(r.hours)} · القسم ${r.compartment}</div>
           <div class="muted small">طُلب: ${FZ.fmtTime(r.createdAt)}
-            ${r.paymentClaimedAt ? ` · <span class="badge badge-paid">الطالب أكّد التحويل</span>` : ` · لم يؤكد التحويل بعد`}</div>
+            ${r.paymentClaimedAt ? ` · <span class="badge badge-paid">الطالب أكّد التحويل</span>` : ""}</div>
+          ${r.receiptUrl ? `<a class="receipt-link" href="${esc(r.receiptUrl)}" target="_blank" rel="noopener">🧾 عرض الإيصال</a>` : `<div class="muted small">لم يُرفع إيصال بعد</div>`}
           <div class="actions">
             <button class="btn btn-sm" data-action="approve" data-id="${r.id}" ${canApprove ? "" : "disabled"}>✔ تم استلام المبلغ</button>
             <button class="btn btn-sm btn-ghost" data-action="reject" data-id="${r.id}">✖ رفض</button>
@@ -116,8 +117,11 @@
       <div class="admin-card">
         <div class="admin-card-top"><b>${esc(r.toolName)}</b><span class="muted small">القسم ${r.compartment}</span></div>
         ${student(r.uid)}
-        <div class="muted small">تمت الموافقة: ${FZ.fmtTime(r.paidAt)} · ${FZ.planLabel(r.hours)}</div>
+        <div class="muted small">تمت الموافقة: ${FZ.fmtTime(r.paidAt)} · ${FZ.planLabel(r.hours)} · ${money(r.amount)}
+          ${r.approvedBy === "auto-receipt" ? ` · <span class="badge badge-pending">تلقائي بالإيصال</span>` : ""}</div>
+        ${r.receiptUrl ? `<a class="receipt-link" href="${esc(r.receiptUrl)}" target="_blank" rel="noopener">🧾 عرض الإيصال</a>` : ""}
         <div class="actions">
+          ${r.receiptUrl ? `<button class="btn btn-sm btn-danger" data-action="rejectReceipt" data-id="${r.id}">✖ رفض الإيصال</button>` : ""}
           <button class="btn btn-sm btn-ghost" data-action="cancelPaid" data-id="${r.id}">إلغاء (لم يحضر)</button>
         </div>
       </div>`).join("") : empty("لا يوجد.");
@@ -332,6 +336,14 @@
             [`rentals/${id}/status`]: "rejected",
             [`users/${r.uid}/state/activeRental`]: null
           });
+        } else if (a === "rejectReceipt") {
+          if (!confirm(`رفض إيصال ${r.ref}؟ سيُلغى الحجز وتعود الأداة متاحة.`)) return;
+          await FZ.db.ref().update({
+            [`rentals/${id}/status`]: "rejected",
+            [`tools/${r.toolId}/status`]: "available",
+            [`users/${r.uid}/state/activeRental`]: null
+          });
+          FZ.toast("تم رفض الإيصال وإلغاء الحجز", "success");
         } else if (a === "cancelPaid") {
           if (!confirm("إلغاء هذا الحجز وإعادة الأداة متاحة؟")) return;
           await FZ.db.ref().update({

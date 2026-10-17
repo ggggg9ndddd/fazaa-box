@@ -20,6 +20,10 @@ const PAYMENT_INFO = {
   ]
 };
 
+// رابط استقبال إيصالات التحويل (Google Apps Script Web App).
+// إذا تُرك فارغاً يعود الموقع لطريقة «حوّلت المبلغ» وموافقة المسؤول.
+const RECEIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbzLnUSfrtY4VEoObXTG3NiJWNSN_-wiKQHW9Kp9m5jsftKmW6fK6M8k29U4kJAazPNT/exec";
+
 // اتركها false في التشغيل الحقيقي.
 // true = الاتصال بمحاكيات Firebase المحلية (للاختبار فقط).
 const USE_EMULATORS = false;
