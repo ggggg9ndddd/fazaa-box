@@ -191,7 +191,7 @@
 
   function announceStatus(status) {
     const msgs = {
-      paid: "تمت الموافقة على الدفع ✅ يمكنك الآن إنشاء رمز الاستلام عند الصندوق",
+      paid: "تم تأكيد الدفع ✅ توجّه للصندوق وافتح القسم من الموقع",
       active: "تم فتح القسم — استلم أداتك. لا تنسَ موعد الإرجاع ⏰",
       returned: "تم إرجاع الأداة بنجاح، شكراً لك 🌟",
       rejected: "تم رفض طلبك — تواصل مع المسؤول للاستفسار",
@@ -222,33 +222,30 @@
     $("alerts").innerHTML = out.join("");
   }
 
-  function pinState(type) {
+  // حالة طلب فتح القسم: الشريحة داخل الصندوق تنفّذه مباشرة (بدون لوحة أرقام)
+  function unlockState(type) {
     const p = S.pin;
     if (!p || p.type !== type) return { kind: "none" };
-    if (p.used) return { kind: "used" };
-    const left = p.createdAt + FZ.PIN_TTL - FZ.now();
-    if (left <= 0) return { kind: "expired" };
-    return { kind: "valid", expiresAt: p.createdAt + FZ.PIN_TTL };
+    if (p.used) return { kind: "done" };
+    if (FZ.now() - p.createdAt > FZ.UNLOCK_TTL) return { kind: "timeout" };
+    return { kind: "waiting" };
   }
 
-  function pinBlock(type, compartment) {
-    const ps = pinState(type);
-    const title = type === "pickup" ? "رمز الاستلام" : "رمز الإرجاع";
-    if (ps.kind === "valid") {
-      return `
-        <div class="pin-container">
-          <div class="pin-label">${title} — القسم رقم ${compartment}</div>
-          <div class="pin-code" dir="ltr">${esc(S.pinCode)}</div>
-          <div class="pin-timer">ينتهي خلال <span data-to="${ps.expiresAt}">${FZ.fmtCountdown(ps.expiresAt - FZ.now())}</span></div>
-        </div>
-        <p class="hint">أدخل الرمز في لوحة أرقام الصندوق ثم اضغط <b>#</b>. الرمز يُستخدم مرة واحدة فقط.</p>`;
+  function openBlock(type, compartment) {
+    const us = unlockState(type);
+    if (us.kind === "waiting") {
+      return `<div class="unlock-wait"><div class="loader small"></div>
+          <b>جارٍ فتح القسم رقم ${compartment}…</b>
+          <span class="muted small">انتظر لحظات بجانب الصندوق</span></div>`;
     }
-    const note = ps.kind === "expired" ? `<p class="hint warn">انتهت صلاحية الرمز السابق — أنشئ رمزاً جديداً.</p>` : "";
-    const disabled = FZ.box.online ? "" : "disabled";
-    const label = type === "pickup" ? "أنا عند الصندوق — أنشئ رمز الاستلام" : "أنشئ رمز الإرجاع";
+    const note = us.kind === "timeout"
+      ? `<p class="hint warn">لم يستجب الصندوق. تأكد أنه متصل وحاول مرة أخرى، أو تواصل مع الفريق.</p>` : "";
+    const label = type === "pickup" ? `🔓 افتح القسم رقم ${compartment} الآن` : `🔓 افتح القسم رقم ${compartment} للإرجاع`;
     return `${note}
-      <button class="btn btn-accent btn-block" data-action="pin" data-type="${type}" ${disabled}>${label}</button>
-      ${FZ.box.online ? `<p class="hint">الرمز صالح لمدة 10 دقائق فقط، لذا أنشئه وأنت عند الصندوق.</p>` : `<p class="hint warn">لا يمكن إنشاء رمز والصندوق غير متصل.</p>`}`;
+      <button class="btn btn-accent btn-block btn-open" data-action="open" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>${label}</button>
+      ${FZ.box.online
+        ? `<p class="hint">اضغط الزر وأنت واقف عند الصندوق — سيُفتح القفل مباشرة.</p>`
+        : `<p class="hint warn">الصندوق غير متصل حالياً، لا يمكن فتحه.</p>`}`;
   }
 
   // رفع إيصال التحويل (يُحفظ في Google Drive ويؤكد الحجز تلقائياً)
@@ -366,7 +363,7 @@
       body = `
         <div class="banner banner-success">تم تأكيد الدفع ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
         <p class="hint">مدة الاستئجار تبدأ لحظة فتح القسم.</p>
-        ${pinBlock("pickup", r.compartment)}`;
+        ${openBlock("pickup", r.compartment)}`;
     } else if (r.status === "active") {
       const t = FZ.now();
       let due;
@@ -388,8 +385,8 @@
       }
       body = `${due}
         <h3 class="sub-title">إرجاع الأداة</h3>
-        <p class="hint">ضع الأداة في <b>القسم رقم ${r.compartment}</b> بعد فتحه بالرمز، ثم أغلق الباب.</p>
-        ${pinBlock("return", r.compartment)}`;
+        <p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
+        ${openBlock("return", r.compartment)}`;
     }
 
     el.innerHTML = `<div class="card rental-card">${head}${summary}${body}</div>`;
@@ -399,7 +396,7 @@
   function phaseKey() {
     const r = S.rental; if (!r) return "";
     const t = FZ.now();
-    const pinValid = S.pin && !S.pin.used && S.pin.createdAt + FZ.PIN_TTL > t;
+    const pinValid = S.pin && !S.pin.used && t - S.pin.createdAt <= FZ.UNLOCK_TTL;
     const duePhase = r.dueAt ? (t < r.dueAt ? 0 : t < r.dueAt + FZ.GRACE ? 1 : 2) : -1;
     return `${r.status}|${pinValid}|${duePhase}`;
   }
@@ -493,7 +490,11 @@
         [`rentals/${S.rentalId}/status`]: "cancelled",
         [`users/${S.user.uid}/state/activeRental`]: null
       }).catch(err => FZ.toast(FZ.authError(err), "error")));
-    } else if (a === "pin") {
+    } else if (a === "open") {
+      const ok = confirm(btn.dataset.type === "pickup"
+        ? "هل أنت واقف عند الصندوق الآن؟ سيُفتح القفل مباشرة."
+        : "هل أنت عند الصندوق والأداة معك؟ سيُفتح القفل مباشرة.");
+      if (!ok) return;
       await FZ.withBusy(btn, () => generatePin(btn.dataset.type));
     } else if (a === "whatsapp") {
       sendToWhatsApp();
@@ -547,7 +548,7 @@
         return; // نجح — المستمع سيعرض الرمز
       } catch (err) { /* غالباً تعارض مع رمز آخر فعّال — نجرب رقماً آخر */ }
     }
-    FZ.toast("تعذّر إنشاء الرمز. تأكد أن الصندوق متصل وحاول مجدداً.", "error");
+    FZ.toast("تعذّر إرسال طلب الفتح. تأكد أن الصندوق متصل وحاول مجدداً.", "error");
   }
 
   function sendToWhatsApp() {

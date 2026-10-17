@@ -525,3 +525,18 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 .or-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; }
 .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
 .text-start { text-align: right; }
+
+/* فتح القسم مباشرة */
+.btn-open { font-size: 1.05rem; padding: 16px; }
+.unlock-wait {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    background: var(--info-bg); border: 1px solid #BFDBFE; border-radius: var(--radius-md); padding: 14px; color: #1E3A8A;
+}
+.unlock-wait .loader { margin: 4px auto; }
+.unlock-list { display: flex; flex-direction: column; gap: 8px; }
+.unlock-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
+    padding: 10px; color: #E2E8F0; font-size: 0.85rem;
+}
+.unlock-empty { color: #94A3B8; text-align: center; padding: 8px; }

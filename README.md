@@ -69,23 +69,23 @@ pins/{6 أرقام}: { uid, rentalId, compartment, type: pickup|return, createdA
 
 ---
 
-## المطلوب من ESP32 (عقد التكامل)
+## المطلوب من الشريحة داخل الصندوق (عقد التكامل)
 
-**النبضة:** كل 30 ثانية اكتب `box/lastSeen = {".sv":"timestamp"}`.
-**عند انقطاع Wi-Fi:** تبقى السيرفوهات في وضع القفل، وارفض أي رمز يُدخل.
-**الوقت:** استخدم NTP للحصول على الوقت الحالي (بالمللي ثانية).
+لا توجد لوحة أرقام: الطالب يضغط «افتح القسم» في الموقع، فيُكتب **طلب فتح** في `pins/{id}`، والشريحة تنفّذه مباشرة.
 
-عند إدخال رمز ثم `#`:
+**النبضة:** كل 30 ثانية اكتب `box/lastSeen = {".sv":"timestamp"}` (بدونها الموقع يعرض «الصندوق غير متصل» ويعطّل زر الفتح).
+**عند انقطاع Wi-Fi:** تبقى الأقفال مغلقة.
+**الوقت:** استخدم NTP.
 
-1. اقرأ `pins/{code}`. إذا كان غير موجود، أو `used == true`، أو `now - createdAt > 600000` ← **ارفض**.
-2. اقرأ `rentals/{rentalId}`. يجب أن يكون `currentPin == code` و `compartment` مطابقاً، وإلا ← **ارفض**.
-3. إذا كان `type == "pickup"` يجب أن تكون الحالة `paid`. وإذا كان `type == "return"` يجب أن تكون `active`.
-4. اكتب `pins/{code}/used = true` و `usedAt` (يفضّل عبر transaction)، ثم **افتح القسم** وأعد قفله بعد إغلاق الباب أو بعد مهلة.
-5. **استلام:** `rentals/{rid}`: `status="active"`, `startAt=now`, `dueAt=now + hours×3600000`، ثم `tools/{toolId}/status="rented"`.
-6. **إرجاع:** احسب رسوم التأخير (إذا تجاوز `now` قيمة `dueAt + 3600000` فإن الرسوم = عدد ساعات التأخير مقرّباً لأعلى × `lateFeePerHour`)، ثم:
-   `rentals/{rid}`: `status="returned"`, `returnedAt`, `lateFee`، و`tools/{toolId}/status="available"`، و`users/{uid}/state/activeRental = null`، وأضف الرسوم إلى `users/{uid}/state/lateFeeDue`.
+استمع لـ `pins` (مثلاً `orderByChild("createdAt").limitToLast(20)`)، ولكل طلب جديد:
 
-> نفس هذا المنطق مكتوب بلغة JavaScript في الدالة `processPin` داخل `admin.js`، ويمكنك الرجوع إليها كمرجع.
+1. إذا `used == true` أو `now - createdAt > 60000` (أقدم من دقيقة) ← **تجاهله**.
+2. اقرأ `rentals/{rentalId}`: يجب `currentPin == id` و `compartment` مطابق، و `type == "pickup"` مع حالة `paid` أو `type == "return"` مع حالة `active`.
+3. اكتب `pins/{id}/used = true` و `usedAt` (يفضّل transaction)، ثم **افتح قفل القسم** وأعد قفله بعد ثوانٍ أو بعد إغلاق الباب.
+4. **استلام:** `rentals/{rid}`: `status="active"`, `startAt=now`, `dueAt=now + hours×3600000`، و`tools/{toolId}/status="rented"`.
+5. **إرجاع:** احسب رسوم التأخير (بعد ساعة سماح: عدد الساعات المتأخرة مقرّبة لأعلى × `lateFeePerHour`)، ثم `status="returned"`, `returnedAt`, `lateFee`، والأداة `available`، و`users/{uid}/state/activeRental = null`، وأضف الرسوم إلى `lateFeeDue`.
+
+> نفس المنطق مكتوب في `processPin` داخل `admin.js`، وقسم «طلبات فتح الصندوق» في لوحة المسؤول يحاكيه للاختبار.
 
 ---
 

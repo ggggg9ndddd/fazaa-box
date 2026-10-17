@@ -79,20 +79,14 @@
 
                 <div class="admin-col">
                     <section class="admin-section">
-                        <h2 class="section-title">🔢 محاكي لوحة الأرقام</h2>
-                        <p class="hint">لاختبار الرموز بدون الجهاز. ينفّذ نفس منطق ESP32 تماماً (التحقق، الفتح، تحديث الحالات).</p>
+                        <h2 class="section-title">🔓 طلبات فتح الصندوق</h2>
+                        <p class="hint">لما يضغط الطالب «افتح القسم» يظهر طلبه هنا، والشريحة داخل الصندوق تنفّذه تلقائياً. قبل تركيب الشريحة: فعّل المحاكاة تحت واضغط «تنفيذ».</p>
                         <div class="keypad-wrap">
-                            <div class="keypad-screen" id="kpScreen" dir="ltr">______</div>
-                            <div class="keypad" id="keypad">
-                                <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-                                <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
-                                <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
-                                <button data-k="*" class="kp-fn">*</button><button data-k="0">0</button><button data-k="#" class="kp-ok">#</button>
-                            </div>
-                            <div class="keypad-result" id="kpResult">أدخل الرمز ثم اضغط #  (* للمسح)</div>
+                            <div id="unlockList" class="unlock-list"></div>
+                            <div class="keypad-result" id="kpResult"></div>
                             <div class="compartments" id="compartments"></div>
                             <label class="switch-row"><input type="checkbox" id="simBeat">
-                                <span>محاكاة اتصال الصندوق (نبضة كل 30 ثانية من هذه الصفحة) — للاختبار فقط قبل تشغيل ESP32</span></label>
+                                <span>محاكاة الصندوق من هذه الصفحة (اتصال + تنفيذ طلبات الفتح تلقائياً) — للاختبار فقط قبل تركيب الشريحة</span></label>
                         </div>
                     </section>
 

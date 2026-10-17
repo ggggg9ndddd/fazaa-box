@@ -47,6 +47,7 @@
     listen("rentals", FZ.db.ref("rentals").limitToLast(300), v => S.rentals = v);
     listen("users", FZ.db.ref("users"), v => S.users = v);
     listen("tools", FZ.db.ref("tools"), v => S.tools = v);
+    listen("pins", FZ.db.ref("pins").orderByChild("createdAt").limitToLast(30), v => S.pins = v);
   });
 
   function listen(name, ref, set) {
@@ -72,7 +73,7 @@
   function renderAll() {
     renderStats();
     renderPending(); renderPaid(); renderActive();
-    renderFees(); renderTools(); renderHistory(); renderCompartments(); renderUsers();
+    renderFees(); renderTools(); renderHistory(); renderCompartments(); renderUsers(); renderUnlocks();
   }
 
   function renderStats() {
@@ -433,13 +434,13 @@
   }
 
   async function processPin(code) {
-    if (!/^\d{6}$/.test(code)) return { ok: false, msg: "الرمز يجب أن يكون 6 أرقام" };
-    if (!FZ.box.online) return { ok: false, msg: "الصندوق غير متصل — الرموز لا تُقبل" };
+    if (!/^\d{6}$/.test(code)) return { ok: false, msg: "طلب غير صالح" };
+    if (!FZ.box.online) return { ok: false, msg: "الصندوق غير متصل — لا تُنفَّذ طلبات الفتح" };
     const p = (await FZ.db.ref(`pins/${code}`).get()).val();
     if (!p) return { ok: false, msg: "رمز غير صحيح" };
     if (p.used) return { ok: false, msg: "الرمز مستخدم مسبقاً" };
     const t = FZ.now();
-    if (t - p.createdAt > FZ.PIN_TTL) return { ok: false, msg: "انتهت صلاحية الرمز" };
+    if (t - p.createdAt > FZ.UNLOCK_TTL) return { ok: false, msg: "انتهت مهلة الطلب (أكثر من دقيقة)" };
     const r = (await FZ.db.ref(`rentals/${p.rentalId}`).get()).val();
     if (!r || r.currentPin !== code) return { ok: false, msg: "الرمز غير مرتبط بعملية صالحة" };
     if (r.compartment !== p.compartment) return { ok: false, msg: "الرمز لا يخص هذا القسم" };
@@ -465,32 +466,53 @@
       msg: `✅ فُتح القسم ${r.compartment} — تم تسجيل الإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
   }
 
-  // -------------------- لوحة الأرقام --------------------
-  let entry = "";
-  const screen = () => { $("kpScreen").textContent = (entry + "______").slice(0, 6); };
-  $("keypad").addEventListener("click", async e => {
-    const k = e.target.dataset.k;
-    if (!k) return;
-    if (k === "*") { entry = ""; screen(); $("kpResult").textContent = "تم المسح"; $("kpResult").className = "keypad-result"; return; }
-    if (k === "#") {
-      const code = entry; entry = ""; screen();
-      $("kpResult").textContent = "جارٍ التحقق…"; $("kpResult").className = "keypad-result";
-      try {
-        const res = await processPin(code);
-        $("kpResult").textContent = res.msg;
-        $("kpResult").className = `keypad-result ${res.ok ? "ok" : "bad"}`;
-        if (res.ok) {
-          S.opened[res.compartment] = true; renderCompartments();
-          setTimeout(() => { S.opened[res.compartment] = false; renderCompartments(); }, 5000); // يُقفل تلقائياً
-        }
-      } catch (err) {
-        $("kpResult").textContent = "خطأ: " + FZ.authError(err);
-        $("kpResult").className = "keypad-result bad";
-      }
-      return;
+  // -------------------- طلبات فتح الصندوق --------------------
+  const handled = new Set();
+  function pendingUnlocks() {
+    const t = FZ.now();
+    return Object.entries(S.pins || {})
+      .filter(([, p]) => p && !p.used && t - p.createdAt <= FZ.UNLOCK_TTL)
+      .map(([code, p]) => ({ code, ...p }))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  function renderUnlocks() {
+    const el = $("unlockList");
+    if (!el) return;
+    const list = pendingUnlocks();
+    el.innerHTML = list.length ? list.map(p => {
+      const r = S.rentals[p.rentalId] || {};
+      const prof = (S.users[p.uid] && S.users[p.uid].profile) || {};
+      return `<div class="unlock-item">
+          <div><b>${p.type === "pickup" ? "استلام" : "إرجاع"} — القسم ${p.compartment}</b>
+            <div class="small">${esc(prof.name || "")} · ${esc(r.toolName || "")}</div></div>
+          <button class="btn btn-sm btn-accent" data-action="runUnlock" data-code="${p.code}">تنفيذ</button>
+        </div>`;
+    }).join("") : `<div class="muted small unlock-empty">لا توجد طلبات فتح الآن.</div>`;
+  }
+
+  async function runUnlock(code) {
+    if (handled.has(code)) return;
+    handled.add(code);
+    const res = await processPin(code).catch(err => ({ ok: false, msg: "خطأ: " + FZ.authError(err) }));
+    $("kpResult").textContent = res.msg;
+    $("kpResult").className = `keypad-result ${res.ok ? "ok" : "bad"}`;
+    if (res.ok) {
+      S.opened[res.compartment] = true; renderCompartments();
+      setTimeout(() => { S.opened[res.compartment] = false; renderCompartments(); }, 5000); // يُقفل تلقائياً
     }
-    if (entry.length < 6) { entry += k; screen(); }
+  }
+
+  document.addEventListener("click", e => {
+    const b = e.target.closest('[data-action="runUnlock"]');
+    if (b) runUnlock(b.dataset.code);
   });
+
+  // في وضع المحاكاة تُنفَّذ الطلبات تلقائياً كما ستفعل الشريحة
+  setInterval(() => {
+    renderUnlocks();
+    if ($("simBeat") && $("simBeat").checked) pendingUnlocks().forEach(p => runUnlock(p.code));
+  }, 1500);
 
   // -------------------- نبضة وهمية (اختبار بدون ESP32) --------------------
   let simTimer = null;

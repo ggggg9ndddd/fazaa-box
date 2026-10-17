@@ -4,7 +4,8 @@
 const FZ = (() => {
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
-  const PIN_TTL = 10 * MIN;        // صلاحية رمز PIN: 10 دقائق
+  const PIN_TTL = 10 * MIN;        // أقصى عمر لطلب الفتح في قاعدة البيانات
+  const UNLOCK_TTL = 60 * 1000;    // الشريحة تنفّذ طلب الفتح فقط إذا كان عمره أقل من دقيقة
   const BOX_TIMEOUT = 90 * 1000;   // يُعتبر الصندوق غير متصل إذا لم يرسل نبضة خلال 90 ثانية (النبضة كل 30 ثانية)
   const GRACE = HOUR;              // ساعة سماح بعد انتهاء المدة قبل تسجيل رسوم التأخير
 
@@ -157,6 +158,6 @@ const FZ = (() => {
     ready, auth, db, TS, now, box, watchBox, renderBoxPill,
     money, esc, fmtTime, fmtCountdown, planLabel, lateFeeFor,
     STATUS, TOOL_STATUS, badge, authError, toast, startCountdowns, withBusy,
-    MIN, HOUR, PIN_TTL, BOX_TIMEOUT, GRACE
+    MIN, HOUR, PIN_TTL, UNLOCK_TTL, BOX_TIMEOUT, GRACE
   };
 })();
