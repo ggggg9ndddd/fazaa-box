@@ -173,7 +173,7 @@
     rentalRef = FZ.db.ref(`rentals/${rid}`);
     rentalRef.on("value", s => {
       const prev = S.rental;
-      S.rental = s.val();
+      S.rental = FZ.withDue(s.val());
       if (prev && S.rental && prev.status !== S.rental.status) announceStatus(S.rental.status);
       attachPin(S.rental && S.rental.currentPin);
       renderAll();

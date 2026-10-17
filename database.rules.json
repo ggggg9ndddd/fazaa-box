@@ -104,6 +104,7 @@
     },
 
     "pins": {
+      ".indexOn": ["createdAt"],
       ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
 
       "$pin": {

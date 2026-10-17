@@ -82,7 +82,7 @@ function syncFazza() {
       return [
         r.ref || '', p.name || '', String(p.universityId || ''), String(p.phone || ''),
         r.toolName || '', hoursLabel_(r.hours), omr_(r.amount), STATUS[r.status] || r.status,
-        fmt_(r.createdAt), fmt_(r.paidAt), fmt_(r.startAt), fmt_(r.dueAt), fmt_(r.returnedAt),
+        fmt_(r.createdAt), fmt_(r.paidAt), fmt_(r.startAt), fmt_(r.dueAt || (r.startAt ? r.startAt + r.hours * 3600000 : 0)), fmt_(r.returnedAt),
         omr_(r.lateFee), r.lateFee ? (r.lateFeePaid ? 'نعم' : 'لا') : '',
         r.receiptUrl || '', r.approvedBy === 'auto-receipt' ? 'تلقائي (إيصال)' : (r.approvedBy ? 'المسؤول' : '')
       ];

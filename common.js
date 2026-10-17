@@ -77,8 +77,15 @@ const FZ = (() => {
     return `${hours} ساعات`;
   }
 
+  // الشريحة تكتب وقت الاستلام فقط (startAt)، وموعد الإرجاع يُحسب منه هنا
+  function withDue(r) {
+    if (r && !r.dueAt && r.startAt && r.hours) r.dueAt = r.startAt + r.hours * HOUR;
+    return r;
+  }
+
   // رسوم التأخير: تُحسب فقط إذا تجاوز التأخير ساعة السماح، بعدد ساعات التأخير (تقريب لأعلى) × سعر الساعة
   function lateFeeFor(rental, tool, at) {
+    withDue(rental);
     if (!rental || !rental.dueAt) return 0;
     const over = at - rental.dueAt;
     if (over <= GRACE) return 0;
@@ -156,7 +163,7 @@ const FZ = (() => {
 
   return {
     ready, auth, db, TS, now, box, watchBox, renderBoxPill,
-    money, esc, fmtTime, fmtCountdown, planLabel, lateFeeFor,
+    money, esc, fmtTime, fmtCountdown, planLabel, lateFeeFor, withDue,
     STATUS, TOOL_STATUS, badge, authError, toast, startCountdowns, withBusy,
     MIN, HOUR, PIN_TTL, UNLOCK_TTL, BOX_TIMEOUT, GRACE
   };

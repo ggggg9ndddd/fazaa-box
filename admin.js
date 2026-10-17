@@ -44,7 +44,7 @@
     if (!isAdmin) { $("deniedUid").textContent = user.uid; show("view-denied"); return; }
     $("adminEmail").textContent = user.email;
     show("view-main");
-    listen("rentals", FZ.db.ref("rentals").limitToLast(300), v => S.rentals = v);
+    listen("rentals", FZ.db.ref("rentals").limitToLast(300), v => { Object.values(v).forEach(FZ.withDue); S.rentals = v; });
     listen("users", FZ.db.ref("users"), v => S.users = v);
     listen("tools", FZ.db.ref("tools"), v => S.tools = v);
     listen("pins", FZ.db.ref("pins").orderByChild("createdAt").limitToLast(30), v => S.pins = v);
