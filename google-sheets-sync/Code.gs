@@ -237,7 +237,7 @@ function setupReceipts() {
 /* =====================================================================
  *  الإيميلات التلقائية (مجانية عبر Gmail — حوالي 100 رسالة يومياً)
  * ===================================================================== */
-const SITE_URL = 'https://ggggg9ndddd.github.io/fazaa-box/';
+const SITE_URL = 'https://riooo.online/';
 const ADMIN_URL = SITE_URL + 'admin.html';
 
 function money_(baisa) {
