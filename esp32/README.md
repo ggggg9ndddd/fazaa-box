@@ -4,8 +4,8 @@
 
 | القطعة | تتوصل بـ |
 |---|---|
-| سيرفو القسم 1 — سلك الإشارة (برتقالي/أصفر) | **GPIO 13** |
-| سيرفو القسم 2 — سلك الإشارة | **GPIO 14** |
+| سيرفو القسم 1 — سلك الإشارة (برتقالي/أصفر) | **GPIO 18** |
+| سيرفو القسم 2 — سلك الإشارة | **GPIO 19** |
 | سيرفوهات — السلك الأحمر (+) | **5V من شاحن خارجي (2A أو أكثر)** — مو من ESP32 |
 | سيرفوهات — السلك البني/الأسود (−) | **GND الشاحن + GND الـ ESP32 مع بعض** (أرضي مشترك) |
 | مكثف 1000µF | بين + و − الشاحن، قريب من السيرفوهات |
@@ -21,15 +21,15 @@
    `devices` ← `<UID>` = `true` (بنفس طريقة `admins`).
 3. **Arduino IDE:**
    - ثبّت دعم ESP32: Boards Manager ← ابحث `esp32` (Espressif) ← Install.
-   - Library Manager ← ثبّت: **Firebase Arduino Client Library for ESP8266 and ESP32** (Mobizt)، **ArduinoJson** (7.x)، **ESP32Servo**.
+   - Library Manager ← ثبّت: **ArduinoJson** (7.x) و **ESP32Servo** فقط.
 4. افتح `fazza_box/fazza_box.ino` وعدّل أعلى الملف:
-   `WIFI_SSID` و `WIFI_PASSWORD` و `DEVICE_EMAIL` و `DEVICE_PASSWORD`.
+   `WIFI_SSID` و `WIFI_PASSWORD` و `FIREBASE_EMAIL` و `FIREBASE_PASSWORD`.
 5. اختر اللوحة **ESP32 Dev Module** والمنفذ، واضغط **Upload**.
 6. افتح **Serial Monitor** على سرعة **115200** — لازم تشوف `[WiFi] متصل` وبعدها الموقع يعرض «الصندوق متصل».
 
 ## ضبط زاوية القفل
 غيّر `LOCKED_ANGLE` و `OPEN_ANGLE` حسب المزلاج في صندوقكم (جرّب 0 و 90 أول، وعدّل).
-`OPEN_DURATION_MS` = كم ثانية يبقى القسم مفتوح قبل ما يتقفل تلقائياً (الافتراضي 10 ثواني).
+`OPEN_TIME` = كم ثانية يبقى القسم مفتوح قبل ما يتقفل تلقائياً (الافتراضي 10 ثواني).
 
 ## كيف يشتغل
 - كل 30 ثانية يكتب `box/lastSeen` (عشان الموقع يعرف إنه متصل).

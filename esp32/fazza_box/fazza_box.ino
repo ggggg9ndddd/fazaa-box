@@ -1,267 +1,279 @@
 /*
  * =====================================================================
- *  صندوق فزعة — كود ESP32
- *  - يرسل نبضة "أنا متصل" إلى Firebase كل 30 ثانية
- *  - يراقب طلبات الفتح التي ينشئها الطلاب من الموقع
- *  - يتحقق من الطلب ثم يفتح قفل القسم (سيرفو) ويعيد قفله تلقائياً
- *  - يحدّث حالة الحجز: استلام (active) أو إرجاع (returned) مع رسوم التأخير
+ *  صندوق فزعة — كود ESP32 (يتصل بـ Firebase مباشرة عبر REST)
  *
- *  المكتبات المطلوبة (Arduino IDE > Library Manager):
- *   1) Firebase Arduino Client Library for ESP8266 and ESP32  (Mobizt)  — 4.4.x
- *   2) ArduinoJson  (Benoit Blanchon)  — 7.x
- *   3) ESP32Servo   (Kevin Harrington)
+ *  كيف يشتغل:
+ *   - كل 30 ثانية يكتب box/lastSeen  ← الموقع يعرض «الصندوق متصل»
+ *   - كل ثانيتين يشيّك على طلبات الفتح (pins) اللي يسويها الطالب
+ *     لما يضغط «افتح القسم» في الموقع
+ *   - يتحقق من الطلب، يفتح السيرفو، ويحدّث الحجز:
+ *       استلام  ← status = active
+ *       إرجاع   ← status = returned + رسوم التأخير إن وجدت
+ *
+ *  المكتبات (Library Manager):  ArduinoJson (7.x)  +  ESP32Servo
  *  اللوحة: ESP32 Dev Module
  * =====================================================================
  */
-#include <Arduino.h>
 #include <WiFi.h>
-#include <time.h>
-#include <Firebase_ESP_Client.h>
-#include <addons/TokenHelper.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
+#include <time.h>
 
 // ======================= عدّل هذه القيم =======================
-#define WIFI_SSID        "اسم_شبكة_الواي_فاي"
-#define WIFI_PASSWORD    "كلمة_مرور_الواي_فاي"
+const char* WIFI_SSID     = "YOUR_WIFI_NAME";        // شبكة 2.4GHz
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
-#define API_KEY          "AIzaSyDGiQUlEJFnUDjJHOtxdtxc7R935bxi5bM"
-#define DATABASE_URL     "https://fazza-33661-default-rtdb.europe-west1.firebasedatabase.app"
-
-// حساب الصندوق في Firebase Authentication (أنشئه من Firebase Console)
-#define DEVICE_EMAIL     "box@fazza.app"
-#define DEVICE_PASSWORD  "ضع_كلمة_مرور_حساب_الصندوق"
-
-// أطراف السيرفو: القسم 1 ثم القسم 2
-const int  SERVO_PINS[]      = {13, 14};
-const int  NUM_COMPARTMENTS  = 2;
-const int  LOCKED_ANGLE      = 0;     // زاوية القفل (جرّبها على صندوقك وعدّلها)
-const int  OPEN_ANGLE        = 90;    // زاوية الفتح
-const unsigned long OPEN_DURATION_MS = 10000;  // مدة بقاء القسم مفتوحاً ثم يُقفل تلقائياً
-const int  STATUS_LED        = 2;     // LED اللوحة: يضيء عند الاتصال
+// حساب الصندوق في Firebase Authentication
+const char* FIREBASE_EMAIL    = "box@fazza.app";
+const char* FIREBASE_PASSWORD = "YOUR_BOX_ACCOUNT_PASSWORD";
 // =============================================================
 
-const unsigned long HEARTBEAT_MS = 30000;   // نبضة كل 30 ثانية
-const unsigned long POLL_MS      = 2000;    // فحص طلبات الفتح كل ثانيتين
-const uint64_t UNLOCK_TTL_MS     = 60000;   // يُنفَّذ الطلب فقط إذا عمره أقل من دقيقة
-const uint64_t HOUR_MS           = 3600000ULL;
-const uint64_t GRACE_MS          = HOUR_MS; // ساعة سماح قبل رسوم التأخير
+const char* FIREBASE_API_KEY = "AIzaSyDGiQUlEJFnUDjJHOtxdtxc7R935bxi5bM";
+const char* DB_URL = "https://fazza-33661-default-rtdb.europe-west1.firebasedatabase.app";
 
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
-Servo servos[NUM_COMPARTMENTS];
+// السيرفوهات (نفس توصيلاتك الحالية)
+const int SERVO_PINS[2]   = {18, 19};   // القسم 1 ، القسم 2
+const int LOCKED_ANGLE    = 0;
+const int UNLOCKED_ANGLE  = 90;
+const unsigned long OPEN_TIME = 10000;  // كم يبقى القسم مفتوح (10 ثواني)
+const int STATUS_LED = 2;               // LED اللوحة يضيء لما يكون متصل
 
-unsigned long lastBeat = 0, lastPoll = 0;
-unsigned long openUntil[NUM_COMPARTMENTS] = {0};
+const unsigned long HEARTBEAT_MS = 30000;
+const unsigned long POLL_MS      = 2000;
+const unsigned long RELOGIN_MS   = 50UL * 60UL * 1000UL;  // التوكن يعيش ساعة
+const long long UNLOCK_TTL_MS    = 60000;                  // الطلب صالح دقيقة
+const long long HOUR_MS          = 3600000LL;
+const long long GRACE_MS         = HOUR_MS;                // ساعة سماح
+
+Servo servos[2];
+unsigned long openSince[2] = {0, 0};
+bool isOpen[2] = {false, false};
+
+WiFiClientSecure tls;
+String idToken = "";
+unsigned long tokenAt = 0, lastBeat = 0, lastPoll = 0;
 String handled[16];
 int handledIdx = 0;
 
 // ---------------------------------------------------------------
-uint64_t nowMs() {
+long long nowMs() {
   time_t t = time(nullptr);
-  if (t < 1700000000) return 0;           // الوقت لم يُضبط بعد من NTP
-  return (uint64_t)t * 1000ULL;
+  return t < 1700000000 ? 0 : (long long)t * 1000LL;
 }
 
-bool alreadyHandled(const String &id) {
-  for (int i = 0; i < 16; i++) if (handled[i] == id) return true;
-  return false;
-}
-void remember(const String &id) {
-  handled[handledIdx] = id;
-  handledIdx = (handledIdx + 1) % 16;
-}
-
-void lockAll() {
-  for (int i = 0; i < NUM_COMPARTMENTS; i++) servos[i].write(LOCKED_ANGLE);
+void connectWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("[WiFi] Connecting");
+  unsigned long s = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - s < 20000) { delay(500); Serial.print("."); }
+  Serial.println(WiFi.status() == WL_CONNECTED ? " connected" : " FAILED");
 }
 
+void syncTime() {
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  unsigned long s = millis();
+  while (nowMs() == 0 && millis() - s < 15000) delay(300);
+  Serial.println(nowMs() ? "[TIME] synced" : "[TIME] FAILED");
+}
+
+// طلب HTTPS عام. يرجع كود HTTP ويحط الرد في out
+int request(const String& method, const String& url, const String& body, String& out) {
+  HTTPClient http;
+  http.setTimeout(8000);
+  if (!http.begin(tls, url)) return -1;
+  if (body.length()) http.addHeader("Content-Type", "application/json");
+  int code = http.sendRequest(method.c_str(), body);
+  out = code > 0 ? http.getString() : "";
+  http.end();
+  return code;
+}
+
+bool firebaseLogin() {
+  String url = String("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=") + FIREBASE_API_KEY;
+  JsonDocument req;
+  req["email"] = FIREBASE_EMAIL;
+  req["password"] = FIREBASE_PASSWORD;
+  req["returnSecureToken"] = true;
+  String body, resp;
+  serializeJson(req, body);
+  int code = request("POST", url, body, resp);
+  if (code != 200) { Serial.printf("[AUTH] login failed %d\n%s\n", code, resp.c_str()); return false; }
+  JsonDocument r;
+  if (deserializeJson(r, resp) || r["idToken"].isNull()) return false;
+  idToken = r["idToken"].as<String>();
+  tokenAt = millis();
+  Serial.printf("[AUTH] OK — box UID: %s\n", r["localId"].as<const char*>());
+  return true;
+}
+
+// عملية على قاعدة البيانات مع إعادة تسجيل الدخول تلقائياً إذا انتهى التوكن
+int db(const String& method, const String& path, const String& body, String& out, const String& query = "") {
+  if (idToken.isEmpty() || millis() - tokenAt > RELOGIN_MS) firebaseLogin();
+  String url = String(DB_URL) + path + ".json?auth=" + idToken + query;
+  int code = request(method, url, body, out);
+  if (code == 401 || code == 403) {
+    if (code == 401 && firebaseLogin()) {
+      url = String(DB_URL) + path + ".json?auth=" + idToken + query;
+      code = request(method, url, body, out);
+    }
+  }
+  if (code != 200 && code != 204) Serial.printf("[DB] %s %s -> %d %s\n", method.c_str(), path.c_str(), code, out.c_str());
+  return code;
+}
+
+// ---------------------------------------------------------------
 void openCompartment(int c) {
   int i = c - 1;
-  Serial.printf("[LOCK] فتح القسم %d\n", c);
-  servos[i].write(OPEN_ANGLE);
-  openUntil[i] = millis() + OPEN_DURATION_MS;
+  servos[i].write(UNLOCKED_ANGLE);
+  isOpen[i] = true;
+  openSince[i] = millis();
+  Serial.printf("[LOCK] Compartment %d OPEN\n", c);
 }
 
 void relockTick() {
-  for (int i = 0; i < NUM_COMPARTMENTS; i++) {
-    if (openUntil[i] && (long)(millis() - openUntil[i]) >= 0) {
+  for (int i = 0; i < 2; i++) {
+    if (isOpen[i] && millis() - openSince[i] >= OPEN_TIME) {
       servos[i].write(LOCKED_ANGLE);
-      openUntil[i] = 0;
-      Serial.printf("[LOCK] قفل القسم %d\n", i + 1);
+      isOpen[i] = false;
+      Serial.printf("[LOCK] Compartment %d locked\n", i + 1);
     }
   }
 }
 
-bool readJson(const String &path, JsonDocument &doc) {
-  if (!Firebase.RTDB.get(&fbdo, path)) {
-    Serial.printf("[FB] قراءة %s فشلت: %s\n", path.c_str(), fbdo.errorReason().c_str());
-    return false;
-  }
-  String payload = fbdo.payload();
-  if (payload == "null" || payload.length() == 0) return false;
-  return deserializeJson(doc, payload) == DeserializationError::Ok;
+bool alreadyHandled(const String& id) {
+  for (int i = 0; i < 16; i++) if (handled[i] == id) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------
-void processRequest(const String &id, JsonObject p, uint64_t now) {
+void processRequest(const String& id, JsonObject p, long long now) {
   String rid  = p["rentalId"] | "";
   String type = p["type"] | "";
   int comp    = p["compartment"] | 0;
-  if (rid.isEmpty() || comp < 1 || comp > NUM_COMPARTMENTS) return;
+  if (rid.isEmpty() || comp < 1 || comp > 2) return;
 
+  String resp;
+  if (db("GET", "/rentals/" + rid, "", resp) != 200) return;
   JsonDocument r;
-  if (!readJson("/rentals/" + rid, r)) return;
-  if (String(r["currentPin"] | "") != id) { Serial.println("[REQ] طلب قديم — تجاهل"); return; }
+  if (deserializeJson(r, resp) || r.isNull()) return;
+
+  if (String(r["currentPin"] | "") != id) { Serial.println("[REQ] old request — ignored"); return; }
   if ((int)(r["compartment"] | 0) != comp) return;
 
   String status = r["status"] | "";
   bool pickup = (type == "pickup" && status == "paid");
   bool ret    = (type == "return" && status == "active");
-  if (!pickup && !ret) { Serial.println("[REQ] حالة الحجز لا تسمح — تجاهل"); return; }
-  if (ret) {
-    uint64_t due0 = r["dueAt"] | (uint64_t)0;
-    if (!due0) due0 = (r["startAt"] | (uint64_t)0) + (uint64_t)(r["hours"] | 0) * HOUR_MS;
-    if (now < due0) { Serial.println("[REQ] الإرجاع قبل انتهاء المدة — تجاهل"); return; }
-  }
+  if (!pickup && !ret) { Serial.println("[REQ] rental state does not allow — ignored"); return; }
 
-  // 1) تعليم الطلب كمستخدم أولاً حتى لا يُنفَّذ مرتين
-  FirebaseJson used;
-  used.set("used", true);
-  used.set("usedAt/.sv", "timestamp");
-  if (!Firebase.RTDB.updateNode(&fbdo, "/pins/" + id, &used)) {
-    Serial.printf("[FB] فشل تعليم الطلب: %s\n", fbdo.errorReason().c_str());
+  long long start = r["startAt"] | 0LL;
+  long long due   = r["dueAt"] | 0LL;
+  if (!due && start) due = start + (long long)(r["hours"] | 0) * HOUR_MS;
+  if (ret && now < due) { Serial.println("[REQ] return before time ends — ignored"); return; }
+
+  // 1) علّم الطلب مستخدم قبل الفتح (ما ينفتح مرتين)
+  if (db("PATCH", "/pins/" + id, "{\"used\":true,\"usedAt\":{\".sv\":\"timestamp\"}}", resp) != 200) {
+    Serial.println("[REQ] could not consume request — NOT opening");
     return;
   }
 
-  // 2) فتح القفل
+  // 2) افتح القفل
   openCompartment(comp);
 
-  // 3) تحديث حالة الحجز
   String toolId = r["toolId"] | "";
   String uid    = r["uid"] | "";
+  JsonDocument upd;
 
   if (pickup) {
-    FirebaseJson upd;
-    upd.set("status", "active");
-    upd.set("startAt/.sv", "timestamp");   // موعد الإرجاع يحسبه الموقع = startAt + المدة
-    Firebase.RTDB.updateNode(&fbdo, "/rentals/" + rid, &upd);
-    Firebase.RTDB.setString(&fbdo, "/tools/" + toolId + "/status", "rented");
-    Serial.printf("[RENT] استلام %s\n", rid.c_str());
+    upd["rentals/" + rid + "/status"] = "active";
+    upd["rentals/" + rid + "/startAt"][".sv"] = "timestamp";
+    upd["tools/" + toolId + "/status"] = "rented";
+    Serial.printf("[RENT] pickup %s\n", rid.c_str());
   } else {
-    // حساب رسوم التأخير
-    uint64_t due = r["dueAt"] | (uint64_t)0;
-    if (!due) {
-      uint64_t start = r["startAt"] | (uint64_t)0;
-      int hours = r["hours"] | 0;
-      due = start + (uint64_t)hours * HOUR_MS;
-    }
     int fee = 0;
     if (due && now > due + GRACE_MS) {
-      JsonDocument t;
       int perHour = 0;
-      if (readJson("/tools/" + toolId, t)) perHour = t["lateFeePerHour"] | 0;
-      uint64_t over = now - due;
+      if (db("GET", "/tools/" + toolId + "/lateFeePerHour", "", resp) == 200) perHour = resp.toInt();
+      long long over = now - due;
       fee = (int)((over + HOUR_MS - 1) / HOUR_MS) * perHour;
     }
-
-    FirebaseJson upd;
-    upd.set("status", "returned");
-    upd.set("returnedAt/.sv", "timestamp");
-    upd.set("lateFee", fee);
-    if (fee > 0) upd.set("lateFeePaid", false);
-    Firebase.RTDB.updateNode(&fbdo, "/rentals/" + rid, &upd);
-    Firebase.RTDB.setString(&fbdo, "/tools/" + toolId + "/status", "available");
-    Firebase.RTDB.deleteNode(&fbdo, "/users/" + uid + "/state/activeByTool/" + toolId);
-    if (Firebase.RTDB.getString(&fbdo, "/users/" + uid + "/state/activeRental") && fbdo.stringData() == rid)
-      Firebase.RTDB.deleteNode(&fbdo, "/users/" + uid + "/state/activeRental");   // صيغة قديمة
+    upd["rentals/" + rid + "/status"] = "returned";
+    upd["rentals/" + rid + "/returnedAt"][".sv"] = "timestamp";
+    upd["rentals/" + rid + "/lateFee"] = fee;
+    if (fee > 0) upd["rentals/" + rid + "/lateFeePaid"] = false;
+    upd["tools/" + toolId + "/status"] = "available";
+    upd["users/" + uid + "/state/activeByTool/" + toolId] = nullptr;
+    if (db("GET", "/users/" + uid + "/state/activeRental", "", resp) == 200 && resp == "\"" + rid + "\"")
+      upd["users/" + uid + "/state/activeRental"] = nullptr;   // صيغة قديمة
     if (fee > 0) {
       int current = 0;
-      if (Firebase.RTDB.getInt(&fbdo, "/users/" + uid + "/state/lateFeeDue")) current = fbdo.intData();
-      Firebase.RTDB.setInt(&fbdo, "/users/" + uid + "/state/lateFeeDue", current + fee);
+      if (db("GET", "/users/" + uid + "/state/lateFeeDue", "", resp) == 200) current = resp.toInt();
+      upd["users/" + uid + "/state/lateFeeDue"] = current + fee;
     }
-    Serial.printf("[RENT] إرجاع %s — رسوم تأخير: %d بيسة\n", rid.c_str(), fee);
+    Serial.printf("[RENT] return %s — late fee %d baisa\n", rid.c_str(), fee);
   }
+
+  String body;
+  serializeJson(upd, body);
+  db("PATCH", "", body, resp);   // تحديث كل المسارات مرة وحدة
 }
 
 void pollRequests() {
-  uint64_t now = nowMs();
+  long long now = nowMs();
   if (!now) return;
-
-  QueryFilter q;
-  q.orderBy("createdAt");
-  q.limitToLast(5);
-  bool ok = Firebase.RTDB.getJSON(&fbdo, "/pins", &q);
-  q.clear();
-  if (!ok) { Serial.printf("[FB] قراءة الطلبات فشلت: %s\n", fbdo.errorReason().c_str()); return; }
-
+  String resp;
+  if (db("GET", "/pins", "", resp, "&orderBy=%22createdAt%22&limitToLast=5") != 200) return;
   JsonDocument doc;
-  if (deserializeJson(doc, fbdo.payload())) return;
+  if (deserializeJson(doc, resp) || !doc.is<JsonObject>()) return;
+
   for (JsonPair kv : doc.as<JsonObject>()) {
     String id = kv.key().c_str();
     JsonObject p = kv.value().as<JsonObject>();
     if (p["used"] | false) continue;
-    uint64_t created = p["createdAt"] | (uint64_t)0;
-    if (!created || now > created + UNLOCK_TTL_MS) continue;   // طلب قديم
+    long long created = p["createdAt"] | 0LL;
+    if (!created || now - created > UNLOCK_TTL_MS) continue;
     if (alreadyHandled(id)) continue;
-    remember(id);
-    Serial.printf("[REQ] طلب فتح %s (%s)\n", id.c_str(), String(p["type"] | "").c_str());
+    handled[handledIdx] = id; handledIdx = (handledIdx + 1) % 16;
+    Serial.printf("[REQ] open request %s (%s)\n", id.c_str(), (const char*)(p["type"] | ""));
     processRequest(id, p, now);
   }
 }
 
 // ---------------------------------------------------------------
-void connectWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("[WiFi] جارٍ الاتصال");
-  for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) { delay(500); Serial.print("."); }
-  Serial.println(WiFi.status() == WL_CONNECTED ? " متصل" : " فشل — سيعيد المحاولة");
-}
-
 void setup() {
   Serial.begin(115200);
   pinMode(STATUS_LED, OUTPUT);
-  for (int i = 0; i < NUM_COMPARTMENTS; i++) {
+  for (int i = 0; i < 2; i++) {
     servos[i].setPeriodHertz(50);
     servos[i].attach(SERVO_PINS[i], 500, 2400);
+    servos[i].write(LOCKED_ANGLE);     // مقفل دائماً عند التشغيل
   }
-  lockAll();   // الأقفال مغلقة دائماً عند التشغيل
+  tls.setInsecure();                   // نموذج أولي: بدون التحقق من شهادة الخادم
 
   connectWiFi();
-  configTime(0, 0, "pool.ntp.org", "time.google.com");
-
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
-  auth.user.email = DEVICE_EMAIL;
-  auth.user.password = DEVICE_PASSWORD;
-  config.token_status_callback = tokenStatusCallback;
-  Firebase.reconnectWiFi(true);
-  fbdo.setResponseSize(4096);
-  Firebase.begin(&config, &auth);
+  if (WiFi.status() == WL_CONNECTED) { syncTime(); firebaseLogin(); }
+  Serial.println("=== FAZZA BOX READY ===");
 }
 
 void loop() {
   relockTick();
 
-  bool online = WiFi.status() == WL_CONNECTED && Firebase.ready();
-  digitalWrite(STATUS_LED, online ? HIGH : LOW);
-
   if (WiFi.status() != WL_CONNECTED) {
-    // بدون إنترنت: الأقفال تبقى مغلقة ولا تُنفَّذ أي طلبات
+    digitalWrite(STATUS_LED, LOW);
     static unsigned long lastTry = 0;
     if (millis() - lastTry > 10000) { lastTry = millis(); WiFi.reconnect(); }
-    return;
+    return;   // بدون إنترنت: الأقفال تبقى مسكّرة
   }
-  if (!online) return;
+  if (nowMs() == 0) { syncTime(); return; }
+  digitalWrite(STATUS_LED, idToken.length() ? HIGH : LOW);
 
-  if (millis() - lastBeat >= HEARTBEAT_MS || lastBeat == 0) {
+  if (lastBeat == 0 || millis() - lastBeat >= HEARTBEAT_MS) {
     lastBeat = millis();
-    if (!Firebase.RTDB.setTimestamp(&fbdo, "/box/lastSeen"))
-      Serial.printf("[FB] النبضة فشلت: %s\n", fbdo.errorReason().c_str());
+    String resp;
+    if (db("PUT", "/box/lastSeen", "{\".sv\":\"timestamp\"}", resp) == 200) Serial.println("[BEAT] online");
   }
-
   if (millis() - lastPoll >= POLL_MS) {
     lastPoll = millis();
     pollRequests();
