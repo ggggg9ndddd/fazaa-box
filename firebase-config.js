@@ -4,7 +4,8 @@
 // =====================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDGiQUlEJFnUDjJHOtxdtxc7R935bxi5bM",
-  authDomain: "fazza-33661.firebaseapp.com",
+  // على الدومين الخاص نستخدم نفس الدومين لتسجيل الدخول بجوجل (يمرّ عبر vercel.json إلى Firebase)
+  authDomain: /(^|\.)riooo\.online$/.test(location.hostname) ? location.hostname : "fazza-33661.firebaseapp.com",
   databaseURL: "https://fazza-33661-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "fazza-33661",
   storageBucket: "fazza-33661.firebasestorage.app",
