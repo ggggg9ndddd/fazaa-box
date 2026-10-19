@@ -458,6 +458,7 @@
       }
       return `<div class="tool-card ${avail ? "" : "is-off"}">
           <div class="tool-info">
+            <span class="comp-tag">القسم ${esc(t.compartment)}</span>
             <h3>${esc(t.name)}</h3>
             <p class="tool-price">يبدأ من: <span>${money(from)} / ${plans.length ? FZ.planLabel(plans[0].hours) : ""}</span></p>
             ${avail ? "" : `<div class="mt-6">${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>`}

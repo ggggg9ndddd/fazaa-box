@@ -1,13 +1,13 @@
 :root {
-    --primary-navy: #0B192C;
-    --secondary-navy: #1E3E62;
-    --accent-gold: #FFD700;
-    --accent-yellow: #FFC107;
-    --bg-light: #F4F6F9;
+    --primary-navy: #0F2440;
+    --secondary-navy: #1B3D68;
+    --accent-gold: #F2B705;
+    --accent-yellow: #FFC727;
+    --bg-light: #EAEFF5;
     --surface-white: #FFFFFF;
-    --text-dark: #1E293B;
-    --text-muted: #64748B;
-    --border-color: #E2E8F0;
+    --text-dark: #16233A;
+    --text-muted: #5B6B82;
+    --border-color: #DCE3EC;
     --radius-lg: 16px;
     --radius-md: 10px;
     --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
@@ -18,7 +18,7 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: 'Cairo', sans-serif;
+    font-family: 'Readex Pro', 'Segoe UI', Tahoma, sans-serif;
     -webkit-tap-highlight-color: transparent;
 }
 body {
@@ -556,3 +556,114 @@ code { background: #E2E8F0; padding: 1px 6px; border-radius: 4px; direction: ltr
 }
 .wa-float:hover { background: #1DA851; }
 .banner .btn-sm { display: inline-flex; color: #fff; text-decoration: none; }
+
+
+/* =====================================================================
+   هوية 2026 — رأس الصفحة، الشعار، الخط، بطاقات الأدوات
+   ===================================================================== */
+body { line-height: 1.6; }
+body { background:
+    radial-gradient(1200px 500px at 50% -200px, #D5DEEA 0%, transparent 70%),
+    var(--bg-light); }
+@media (min-width: 560px) { body { padding: 32px 16px; } }
+
+header {
+    background: var(--primary-navy);
+    padding: 28px 24px 34px;
+    border-bottom: 0;
+    overflow: hidden;
+}
+/* شريط الطوارئ: أصفر/كحلي مائل أسفل الرأس — الإشارة الوحيدة الجريئة */
+header::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 10px;
+    background: repeating-linear-gradient(-45deg,
+        var(--accent-gold) 0 14px, var(--primary-navy) 14px 28px);
+}
+header::before {
+    content: "";
+    position: absolute;
+    width: 340px; height: 340px;
+    top: -170px; left: -120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(242,183,5,.16), transparent 65%);
+    pointer-events: none;
+}
+.brand {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+.brand-mark {
+    width: 60px; height: 60px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: var(--accent-gold);
+    box-shadow: 0 0 0 4px rgba(242,183,5,.18);
+    overflow: hidden;
+}
+.brand-mark svg { width: 34px; height: 34px; fill: var(--primary-navy); }
+.brand-logo { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.brand-logo + svg { display: none; }
+.brand-text { text-align: right; }
+.brand-text h1 {
+    font-size: 1.65rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: #fff;
+    letter-spacing: 0;
+}
+.brand-text p {
+    color: var(--accent-gold);
+    font-size: .95rem;
+    font-weight: 500;
+    margin-top: 2px;
+}
+header .box-status { position: relative; }
+
+.app-container { border-radius: 22px; box-shadow: 0 18px 40px rgba(15,36,64,.14); }
+
+.section-title { font-weight: 600; font-size: 1.1rem; }
+.sub-title { font-weight: 600; }
+
+/* بطاقات الأدوات: لصيقة رقم القسم مثل باب الصندوق */
+.tool-card {
+    border: 1.5px solid var(--border-color);
+    border-inline-start: 6px solid var(--primary-navy);
+    border-radius: 14px;
+    padding: 16px 16px 16px 14px;
+    gap: 12px;
+}
+.tool-card:hover { border-color: var(--border-color); border-inline-start-color: var(--accent-gold); box-shadow: none; }
+.tool-card.is-off { border-inline-start-color: var(--border-color); }
+.comp-tag {
+    display: inline-block;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--primary-navy);
+    background: #FFF4CC;
+    border: 1px solid #F5D66B;
+    border-radius: 6px;
+    padding: 0 8px;
+    margin-bottom: 6px;
+}
+.tool-info h3 { font-weight: 600; font-size: 1.02rem; }
+
+.btn { font-weight: 600; border-radius: 10px; }
+.btn-block { border-radius: 12px; }
+.btn-accent { color: var(--primary-navy); }
+.btn:focus-visible, .form-control:focus-visible { outline: 3px solid var(--accent-gold); outline-offset: 2px; }
+.form-control { background-color: #F7F9FC; }
+.form-group label { font-weight: 600; }
+.pin-code, .due-timer { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
