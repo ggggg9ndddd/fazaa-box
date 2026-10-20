@@ -393,14 +393,14 @@
           <div class="ref-code" dir="ltr">${esc(r.ref)}</div>
         </div>
         ${receiptBlock(a)}
-        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ بيانات حجزك عبر واتساب 📲</button>
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">أرسل بيانات حجزك لفزعة عبر واتساب 📲</button>
         ${r.paymentClaimedAt || r.receiptUrl ? "" : `<button class="btn-link mt-12" data-action="cancel" data-rid="${a.rid}">إلغاء الطلب</button>`}`;
     } else if (r.status === "paid") {
       body = `
         <div class="banner banner-success">وافق المسؤول على حجزك ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
         <p class="hint">مدة الاستئجار تبدأ لحظة فتح القسم.</p>
         ${openBlock(a, "pickup", r.compartment)}
-        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ بيانات حجزك عبر واتساب 📲</button>`;
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">أرسل بيانات حجزك لفزعة عبر واتساب 📲</button>`;
     } else if (r.status === "active") {
       const t = FZ.now();
       let due;
@@ -423,7 +423,7 @@
         ${openBlock(a, "return", r.compartment)}`);
       body = `${due}
         ${returnSection}
-        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ موعد الإرجاع عبر واتساب 📲</button>`;
+        <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">أرسل بيانات حجزك لفزعة عبر واتساب 📲</button>`;
     } else if (r.status === "returning") {
       body = `
         <div class="banner banner-success"><strong>فُتح القسم رقم ${r.compartment} ✅</strong>
@@ -620,12 +620,14 @@
   function sendToWhatsApp(rid) {
     const r = S.active[rid] && S.active[rid].r;
     if (!r || !S.profile) return;
-    const msg = `*تفاصيل حجز صندوق فزعة* ⚡\n\n` +
-      `*الأداة:* ${r.toolName}\n*الاسم:* ${S.profile.name}\n*الرقم الجامعي:* ${S.profile.universityId}\n` +
-      `*المدة:* ${FZ.planLabel(r.hours)}\n*المبلغ:* ${money(r.amount)}\n*الرمز المرجعي للتحويل:* ${r.ref}\n` +
-      (r.dueAt ? `*موعد الإرجاع:* ${FZ.fmtTime(r.dueAt)}\n` : "") + `\n` +
-      `شكراً لاستخدامك صندوق فزعة!`;
-    window.open(`https://wa.me/968${S.profile.phone}?text=${encodeURIComponent(msg)}`, "_blank");
+    const msg = `*حجز جديد — صندوق فزعة* ⚡\n\n` +
+      `*الاسم:* ${S.profile.name}\n*الرقم الجامعي:* ${S.profile.universityId}\n*الهاتف:* ${S.profile.phone}\n\n` +
+      `*الأداة:* ${r.toolName} (القسم ${r.compartment})\n*المدة:* ${FZ.planLabel(r.hours)}\n*المبلغ:* ${money(r.amount)}\n` +
+      `*الرمز المرجعي للتحويل:* ${r.ref}\n*الحالة:* ${(FZ.STATUS[r.status] || {}).label || r.status}\n` +
+      (r.dueAt ? `*موعد الإرجاع:* ${FZ.fmtTime(r.dueAt)}\n` : "");
+    const url = contactUrl(msg);
+    if (!url) return FZ.toast("رقم تواصل فزعة غير مضبوط", "error");
+    window.open(url, "_blank");
   }
 
   // -------------------- العدّادات --------------------
