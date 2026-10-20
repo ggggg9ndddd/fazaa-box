@@ -667,3 +667,10 @@ header .box-status { position: relative; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.pin-container { text-align: center; }
+.pin-code { font-size: 2.6rem; letter-spacing: 8px; }
+.pin-help { color: #E2E8F0; font-size: .9rem; margin-top: 6px; }
+.pin-exp { color: #94A3B8; font-size: .8rem; margin-top: 4px; }
+.pin-exp b { color: var(--accent-gold); }
+.btn-lg { padding: 16px; font-size: 1.05rem; }

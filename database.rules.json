@@ -26,7 +26,10 @@
       "$toolId": {
         ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
         ".validate": "newData.hasChildren(['name', 'compartment', 'status', 'plans', 'lateFeePerHour'])",
-        "status": { ".validate": "newData.val() === 'available' || newData.val() === 'reserved' || newData.val() === 'rented' || newData.val() === 'maintenance'" },
+        "status": {
+          ".write": "auth != null && newData.val() === 'available' && root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).exists() && root.child('rentals').child(root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).val()).child('status').val() === 'returning' && newData.parent().parent().parent().child('rentals').child(root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).val()).child('status').val() === 'returned'",
+          ".validate": "newData.val() === 'available' || newData.val() === 'reserved' || newData.val() === 'rented' || newData.val() === 'maintenance'"
+        },
         "compartment": { ".validate": "newData.isNumber()" },
         "lateFeePerHour": { ".validate": "newData.isNumber() && newData.val() >= 0" }
       }
@@ -52,12 +55,12 @@
           ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
 
           "activeRental": {
-            ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.isString() && !root.child('rentals').child(newData.val()).exists() && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('uid').val() === auth.uid && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('status').val() === 'pending') || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'cancelled'))",
+            ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.isString() && !root.child('rentals').child(newData.val()).exists() && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('uid').val() === auth.uid && newData.parent().parent().parent().parent().child('rentals').child(newData.val()).child('status').val() === 'pending') || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'cancelled') || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'returning' && newData.parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'returned'))",
             ".validate": "newData.isString()"
           },
           "activeByTool": {
             "$toolId": {
-              ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.isString() && !root.child('rentals').child(newData.val()).exists() && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('uid').val() === auth.uid && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('toolId').val() === $toolId) || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'cancelled'))",
+              ".write": "auth != null && auth.uid === $uid && ((!data.exists() && newData.isString() && !root.child('rentals').child(newData.val()).exists() && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('uid').val() === auth.uid && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().parent().child('rentals').child(newData.val()).child('toolId').val() === $toolId) || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'pending' && newData.parent().parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'cancelled') || (data.exists() && !newData.exists() && root.child('rentals').child(data.val()).child('status').val() === 'returning' && newData.parent().parent().parent().parent().parent().child('rentals').child(data.val()).child('status').val() === 'returned'))",
               ".validate": "newData.isString()"
             }
           },
@@ -89,8 +92,8 @@
         "createdAt": { ".validate": "newData.isNumber()" },
 
         "status": {
-          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && data.val() === 'pending' && newData.val() === 'cancelled'",
-          ".validate": "newData.val() === 'pending' || newData.val() === 'paid' || newData.val() === 'active' || newData.val() === 'returned' || newData.val() === 'cancelled' || newData.val() === 'rejected'"
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && ((data.val() === 'pending' && newData.val() === 'cancelled') || (data.val() === 'returning' && newData.val() === 'returned'))",
+          ".validate": "newData.val() === 'pending' || newData.val() === 'paid' || newData.val() === 'active' || newData.val() === 'returning' || newData.val() === 'returned' || newData.val() === 'cancelled' || newData.val() === 'rejected'"
         },
 
         "paymentClaimedAt": {
@@ -108,6 +111,10 @@
         "startAt": { ".validate": "newData.isNumber()" },
         "dueAt": { ".validate": "newData.isNumber()" },
         "returnedAt": { ".validate": "newData.isNumber()" },
+        "returnConfirmedAt": {
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && data.parent().child('status').val() === 'returning' && newData.val() === now",
+          ".validate": "newData.isNumber()"
+        },
         "lateFee": { ".validate": "newData.isNumber() && newData.val() >= 0" },
         "lateFeePaid": { ".validate": "newData.isBoolean()" },
         "$other": { ".validate": false }

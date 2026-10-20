@@ -9,7 +9,7 @@ const SHEET_ID = '1hqoRdqmrzzMYbErI6BeUlHtCy5nRI7ClriH-b4XEDQU'; // ملف «ص�
 
 const STATUS = {
   pending: 'بانتظار تأكيد الدفع', paid: 'تم تأكيد الدفع', active: 'مستأجرة حالياً',
-  returned: 'تم الإرجاع', cancelled: 'ملغي', rejected: 'مرفوض'
+  returning: 'بانتظار تأكيد الإرجاع', returned: 'تم الإرجاع', cancelled: 'ملغي', rejected: 'مرفوض'
 };
 
 /** شغّلها مرة واحدة: تحدّث البيانات الآن وتجعلها تتحدث تلقائياً كل 15 دقيقة */
@@ -168,19 +168,12 @@ function doPost(e) {
       const upd = {};
       upd['rentals/' + rid + '/receiptUrl'] = url;
       upd['rentals/' + rid + '/receiptAt'] = { '.sv': 'timestamp' };
-      let autoApproved = false;
-      if (tool.status === 'available') {
-        upd['rentals/' + rid + '/status'] = 'paid';
-        upd['rentals/' + rid + '/paidAt'] = { '.sv': 'timestamp' };
-        upd['rentals/' + rid + '/approvedBy'] = 'auto-receipt';
-        upd['tools/' + r.toolId + '/status'] = 'reserved';
-        autoApproved = true;
-      }
+      const autoApproved = false;   // الحجز يتأكد بموافقة المسؤول من اللوحة
       patchRoot_(upd);
       notifyReceipt_(r, profile, url, autoApproved);
       return json_({
         ok: true, autoApproved: autoApproved,
-        msg: autoApproved ? 'تم استلام الإيصال وتأكيد الحجز ✅' : 'تم استلام الإيصال، وسيراجعه المسؤول قريباً'
+        msg: 'تم استلام الإيصال ✔ بانتظار موافقة المسؤول'
       });
     } finally {
       lock.releaseLock();
@@ -292,15 +285,15 @@ function notifyReceipt_(r, profile, receiptUrl, autoApproved) {
   ];
   sendMail_(adminEmails_(),
     (autoApproved ? '🧾 إيصال جديد — ' : '⚠️ إيصال يحتاج مراجعة — ') + r.ref + ' — ' + (profile.name || ''),
-    mailHtml_(autoApproved ? 'إيصال جديد وتم تأكيد الحجز تلقائياً' : 'إيصال جديد يحتاج مراجعتك (الأداة كانت محجوزة)',
+    mailHtml_('إيصال جديد يحتاج موافقتك',
       rows.concat([['الإيصال', '<a href="' + receiptUrl + '">عرض الإيصال</a>']]),
-      'تأكد من وصول المبلغ في حسابك البنكي. إذا الإيصال غير صحيح، ارفضه من لوحة المسؤول.', 'فتح لوحة المسؤول', ADMIN_URL));
+      'تأكد من وصول المبلغ في حسابك البنكي، ثم اضغط «موافقة» من لوحة المسؤول. إذا الإيصال غير صحيح، ارفضه.', 'فتح لوحة المسؤول', ADMIN_URL));
 
   sendMail_(profile.email,
     autoApproved ? '✅ تم تأكيد حجزك — ' + r.toolName : '🧾 استلمنا إيصالك — ' + r.toolName,
     mailHtml_(autoApproved ? 'تم تأكيد حجزك ✅' : 'استلمنا إيصالك وسنراجعه قريباً',
       [['الأداة', r.toolName], ['المدة', hoursLabel_(r.hours)], ['المبلغ', money_(r.amount)], ['الرمز المرجعي', r.ref]],
-      autoApproved ? 'ادخل الموقع لاستلام الأداة. مدة الاستئجار تبدأ من لحظة الاستلام، ولا تنسَ موعد الإرجاع.' : 'الأداة كانت محجوزة لحظة رفع الإيصال، وسيتواصل معك الفريق.',
+      autoApproved ? '' : 'سيراجع المسؤول الإيصال ويوافق على حجزك، وبعدها تظهر لك خطوة الاستلام في الموقع.',
       'فتح الموقع', SITE_URL));
 }
 
@@ -318,13 +311,13 @@ function notifyRentals_(rentals, users) {
       if (!r.remindSent && due > now && due - now <= HOUR) {
         sendMail_(p.email, '⏰ تذكير: موعد إرجاع ' + r.toolName + ' بعد أقل من ساعة',
           mailHtml_('موعد الإرجاع قرّب ⏰', [['الأداة', r.toolName], ['موعد الإرجاع', fmt_(due)]],
-            'أرجع الأداة قبل الموعد. بعد انتهاء المدة لديك ساعة سماح، وبعدها تُسجَّل رسوم تأخير.', 'فتح الموقع', SITE_URL));
+            'أرجع الأداة قبل الموعد. رسوم التأخير تبدأ مباشرة بعد انتهاء المدة.', 'فتح الموقع', SITE_URL));
         upd['rentals/' + rid + '/remindSent'] = true;
       }
       if (!r.overdueSent && now > due) {
         sendMail_(p.email, '🚨 انتهت مدة استئجار ' + r.toolName,
           mailHtml_('انتهت مدة الاستئجار — أرجع الأداة الآن', [['الأداة', r.toolName], ['كان موعد الإرجاع', fmt_(due)]],
-            'لديك ساعة سماح من موعد الإرجاع، بعدها تُحسب رسوم تأخير عن كل ساعة ويُمنع الحجز حتى تسويتها.', 'فتح الموقع', SITE_URL));
+            'رسوم التأخير تُحسب الآن عن كل ساعة حتى تُرجع الأداة، ويُمنع الحجز حتى تسويتها.', 'فتح الموقع', SITE_URL));
         admins = admins || adminEmails_(users);
         sendMail_(admins, '🚨 تأخير في الإرجاع — ' + (p.name || '') + ' — ' + r.toolName,
           mailHtml_('طالب متأخر في الإرجاع', [['الطالب', p.name || '—'], ['الرقم الجامعي', p.universityId || '—'], ['الهاتف', p.phone || '—'],

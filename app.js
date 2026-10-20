@@ -213,8 +213,9 @@
 
   function announceStatus(status, toolName) {
     const msgs = {
-      paid: "تم تأكيد الدفع ✅ توجّه للصندوق وافتح القسم من الموقع",
+      paid: "وافق المسؤول على حجزك ✅ توجّه للصندوق واطلب رمز الاستلام",
       active: "تم فتح القسم — استلم أداتك. لا تنسَ موعد الإرجاع ⏰",
+      returning: "فُتح القسم — ضع الأداة ثم اضغط «تم الإرجاع»",
       returned: "تم إرجاع الأداة بنجاح، شكراً لك 🌟",
       rejected: "تم رفض طلبك — تواصل مع المسؤول للاستفسار",
       cancelled: "تم إلغاء الطلب"
@@ -245,29 +246,32 @@
     $("alerts").innerHTML = out.join("");
   }
 
-  // حالة طلب فتح القسم: الشريحة داخل الصندوق تنفّذه مباشرة (بدون لوحة أرقام)
-  function unlockState(a, type) {
+  // رمز الفتح: يتولّد من الموقع والطالب يكتبه في لوحة أرقام الصندوق
+  function pinState(a, type) {
     const p = a.pin;
-    if (!p || p.type !== type) return { kind: "none" };
-    if (p.used) return { kind: "done" };
-    if (FZ.now() - p.createdAt > FZ.UNLOCK_TTL) return { kind: "timeout" };
-    return { kind: "waiting" };
+    if (!p || p.type !== type) return "none";
+    if (p.used) return "used";
+    if (FZ.now() - p.createdAt > FZ.PIN_TTL) return "expired";
+    return "valid";
   }
 
   function openBlock(a, type, compartment) {
-    const us = unlockState(a, type);
-    if (us.kind === "waiting") {
-      return `<div class="unlock-wait"><div class="loader small"></div>
-          <b>جارٍ فتح القسم رقم ${compartment}…</b>
-          <span class="muted small">انتظر لحظات بجانب الصندوق</span></div>`;
+    const st = pinState(a, type);
+    if (st === "valid") {
+      const exp = a.pin.createdAt + FZ.PIN_TTL;
+      return `<div class="pin-container">
+          <div class="pin-label">${type === "pickup" ? "رمز الاستلام" : "رمز الإرجاع"} — القسم رقم ${compartment}</div>
+          <div class="pin-code" dir="ltr">${esc(a.pinCode)}</div>
+          <div class="pin-help">اكتب الرمز في لوحة أرقام الصندوق ثم اضغط <b>#</b></div>
+          <div class="pin-exp">ينتهي بعد <b data-to="${exp}">${FZ.fmtCountdown(exp - FZ.now())}</b></div>
+        </div>`;
     }
-    const note = us.kind === "timeout"
-      ? `<p class="hint warn">لم يستجب الصندوق. تأكد أنه متصل وحاول مرة أخرى، أو تواصل مع الفريق.</p>` : "";
-    const label = type === "pickup" ? `🔓 افتح القسم رقم ${compartment} الآن` : `🔓 افتح القسم رقم ${compartment} للإرجاع`;
+    const note = st === "expired" ? `<p class="hint warn">انتهت صلاحية الرمز السابق. اطلب رمزاً جديداً.</p>` : "";
+    const label = type === "pickup" ? "احصل على رمز الاستلام" : "احصل على رمز الإرجاع";
     return `${note}
-      <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>${label}</button>
+      <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>🔑 ${label}</button>
       ${FZ.box.online
-        ? `<p class="hint">اضغط الزر وأنت واقف عند الصندوق — سيُفتح القفل مباشرة.</p>`
+        ? `<p class="hint">الرمز صالح 10 دقائق ولمرة واحدة. اطلبه وأنت قريب من الصندوق.</p>`
         : `<p class="hint warn">الصندوق غير متصل حالياً، لا يمكن فتحه.</p>`}`;
   }
 
@@ -275,7 +279,8 @@
   function receiptBlock(a) {
     const r = a.r;
     if (r.receiptUrl) {
-      return `<div class="banner banner-info">تم استلام إيصالك (${FZ.fmtTime(r.receiptAt)}). الأداة كانت محجوزة لحظة الرفع، لذلك سيراجع المسؤول طلبك قريباً.</div>`;
+      return `<div class="banner banner-info"><strong>تم استلام إيصالك ✔</strong> (${FZ.fmtTime(r.receiptAt)})<br>
+        بانتظار موافقة المسؤول. بعد الموافقة تظهر لك خطوة استلام الأداة هنا.</div>`;
     }
     if (typeof RECEIPT_ENDPOINT === "undefined" || !RECEIPT_ENDPOINT) {
       // احتياطي: بدون رابط رفع الإيصالات نرجع للطريقة القديمة (موافقة المسؤول)
@@ -292,8 +297,8 @@
           <b>${f ? esc(f.name) : "اضغط لإرفاق صورة إيصال التحويل"}</b>
           <span class="muted small">${f ? `${(f.size / 1024 / 1024).toFixed(1)} MB — اضغط للتغيير` : "صورة أو لقطة شاشة أو PDF"}</span>
         </label>
-        <button class="btn btn-accent btn-block" data-action="uploadReceipt" data-rid="${a.rid}" ${f ? "" : "disabled"}>رفع الإيصال وتأكيد الحجز</button>
-        <p class="hint">يُؤكَّد حجزك فوراً بعد رفع الإيصال. الإيصالات تُراجَع، وأي إيصال غير صحيح يُلغى معه الحجز.</p>
+        <button class="btn btn-accent btn-block" data-action="uploadReceipt" data-rid="${a.rid}" ${f ? "" : "disabled"}>رفع الإيصال</button>
+        <p class="hint">بعد رفع الإيصال يراجعه المسؤول ويوافق على حجزك.</p>
       </div>`;
   }
 
@@ -392,7 +397,7 @@
         ${r.paymentClaimedAt || r.receiptUrl ? "" : `<button class="btn-link mt-12" data-action="cancel" data-rid="${a.rid}">إلغاء الطلب</button>`}`;
     } else if (r.status === "paid") {
       body = `
-        <div class="banner banner-success">تم تأكيد الدفع ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
+        <div class="banner banner-success">وافق المسؤول على حجزك ✅ توجّه إلى الصندوق لاستلام الأداة من <b>القسم رقم ${r.compartment}</b>.</div>
         <p class="hint">مدة الاستئجار تبدأ لحظة فتح القسم.</p>
         ${openBlock(a, "pickup", r.compartment)}
         <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ بيانات حجزك عبر واتساب 📲</button>`;
@@ -405,24 +410,25 @@
             <div class="due-timer" data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</div>
             <div class="muted small">موعد الإرجاع: ${FZ.fmtTime(r.dueAt)}</div>
           </div>`;
-      } else if (t < r.dueAt + FZ.GRACE) {
-        due = `<div class="banner banner-warn"><strong>⏰ انتهت مدة الاستئجار!</strong>
-            أرجع الأداة الآن. ستُسجَّل رسوم تأخير بعد
-            <b data-to="${r.dueAt + FZ.GRACE}">${FZ.fmtCountdown(r.dueAt + FZ.GRACE - t)}</b>.</div>`;
       } else {
         const fee = FZ.lateFeeFor(r, S.tools[r.toolId], t);
-        due = `<div class="banner banner-danger"><strong>متأخر في الإرجاع!</strong>
-            رسوم التأخير حتى الآن: <b>${money(fee)}</b> وتزيد كل ساعة.
+        due = `<div class="banner banner-danger"><strong>⏰ انتهت مدة الاستئجار — أرجع الأداة الآن</strong>
+            رسوم التأخير حتى الآن: <b>${money(fee)}</b>، وتزيد كل ساعة إلى أن تُرجع الأداة.
             لن تتمكن من الاستئجار مجدداً حتى تسويتها.</div>`;
       }
       const returnSection = `<h3 class="sub-title">إرجاع الأداة</h3>` + (t < r.dueAt
         ? `<p class="hint">زر الإرجاع يتفعّل بعد انتهاء مدة الاستئجار، وبعدها تفتح <b>القسم رقم ${r.compartment}</b> وتضع الأداة داخله.</p>
         <button class="btn btn-primary btn-block btn-lg" disabled>🔒 يتفعّل بعد <span data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</span></button>`
-        : `<p class="hint">افتح <b>القسم رقم ${r.compartment}</b> من الزر، ضع الأداة داخله، ثم أغلق الباب.</p>
+        : `<p class="hint">اطلب رمز الإرجاع، اكتبه في لوحة أرقام الصندوق لفتح <b>القسم رقم ${r.compartment}</b>، ضع الأداة داخله، ثم اضغط «تم الإرجاع».</p>
         ${openBlock(a, "return", r.compartment)}`);
       body = `${due}
         ${returnSection}
         <button class="btn btn-whatsapp btn-block" data-action="whatsapp" data-rid="${a.rid}">احفظ موعد الإرجاع عبر واتساب 📲</button>`;
+    } else if (r.status === "returning") {
+      body = `
+        <div class="banner banner-success"><strong>فُتح القسم رقم ${r.compartment} ✅</strong>
+          ضع الأداة داخل القسم وأغلق الباب جيداً، ثم اضغط «تم الإرجاع».</div>
+        <button class="btn btn-accent btn-block btn-lg" data-action="confirmReturn" data-rid="${a.rid}">✔ تم الإرجاع</button>`;
     } else {
       body = `<p class="hint">جارٍ التحديث…</p>`;
     }
@@ -434,8 +440,8 @@
     const t = FZ.now();
     return activeList().map(a => {
       const r = a.r;
-      const pinValid = a.pin && !a.pin.used && t - a.pin.createdAt <= FZ.UNLOCK_TTL;
-      const duePhase = r.dueAt ? (t < r.dueAt ? 0 : t < r.dueAt + FZ.GRACE ? 1 : 2) : -1;
+      const pinValid = a.pin && !a.pin.used && t - a.pin.createdAt <= FZ.PIN_TTL;
+      const duePhase = r.dueAt ? (t < r.dueAt ? 0 : 1) : -1;
       return `${a.rid}:${r.status}|${pinValid}|${duePhase}`;
     }).join(",");
   }
@@ -486,7 +492,9 @@
       </div>
       <ul class="rules-list">
         <li>تقدر تحجز أكثر من أداة، وكل أداة لها حجز ودفع وإرجاع مستقل.</li>
-        <li>بعد انتهاء المدة لديك ساعة سماح، بعدها تُسجَّل رسوم تأخير (${money(t.lateFeePerHour)} لكل ساعة) ويُمنع الاستئجار حتى تسويتها.</li>
+        <li>بعد الدفع ارفع الإيصال، ويؤكد المسؤول حجزك.</li>
+        <li>الاستلام والإرجاع برمز تكتبه في لوحة أرقام الصندوق. الرمز صالح 10 دقائق ولمرة واحدة.</li>
+        <li>رسوم التأخير تبدأ مباشرة بعد انتهاء المدة (${money(t.lateFeePerHour)} لكل ساعة)، ويُمنع الاستئجار حتى تسويتها.</li>
       </ul>
       <button class="btn btn-block mt-20" data-action="book">تأكيد الطلب والانتقال للدفع</button>`;
   }
@@ -540,11 +548,19 @@
       else upd[`users/${S.user.uid}/state/activeRental`] = null;
       await FZ.withBusy(btn, () => FZ.db.ref().update(upd).catch(err => FZ.toast(FZ.authError(err), "error")));
     } else if (a === "open") {
-      const ok = confirm(btn.dataset.type === "pickup"
-        ? "هل أنت واقف عند الصندوق الآن؟ سيُفتح القفل مباشرة."
-        : "هل أنت عند الصندوق والأداة معك؟ سيُفتح القفل مباشرة.");
-      if (!ok) return;
       await FZ.withBusy(btn, () => generatePin(rid, btn.dataset.type));
+    } else if (a === "confirmReturn") {
+      const r = S.active[rid] && S.active[rid].r;
+      if (!r || r.status !== "returning") return;
+      if (!confirm("هل وضعت الأداة داخل القسم وأغلقت الباب؟")) return;
+      const upd = {
+        [`rentals/${rid}/status`]: "returned",
+        [`rentals/${rid}/returnConfirmedAt`]: FZ.TS,
+        [`tools/${r.toolId}/status`]: "available"
+      };
+      if (S.state.activeByTool && S.state.activeByTool[r.toolId] === rid) upd[`users/${S.user.uid}/state/activeByTool/${r.toolId}`] = null;
+      if (S.state.activeRental === rid) upd[`users/${S.user.uid}/state/activeRental`] = null;
+      await FZ.withBusy(btn, () => FZ.db.ref().update(upd).catch(err => FZ.toast(FZ.authError(err), "error")));
     } else if (a === "whatsapp") {
       sendToWhatsApp(rid);
     }
@@ -598,7 +614,7 @@
         return; // نجح — المستمع سيعرض الرمز
       } catch (err) { /* غالباً تعارض مع رمز آخر فعّال — نجرب رقماً آخر */ }
     }
-    FZ.toast("تعذّر إرسال طلب الفتح. تأكد أن الصندوق متصل وحاول مجدداً.", "error");
+    FZ.toast("تعذّر إنشاء الرمز. تأكد أن الصندوق متصل وحاول مجدداً.", "error");
   }
 
   function sendToWhatsApp(rid) {

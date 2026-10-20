@@ -147,7 +147,7 @@
         <div class="admin-card-top"><b>${esc(r.toolName)}</b><span class="muted small">القسم ${r.compartment}</span></div>
         ${student(r.uid)}
         <div class="muted small">تمت الموافقة: ${FZ.fmtTime(r.paidAt)} · ${FZ.planLabel(r.hours)} · ${money(r.amount)}
-          ${r.approvedBy === "auto-receipt" ? ` · <span class="badge badge-pending">تلقائي بالإيصال</span>` : ""}</div>
+</div>
         ${r.receiptUrl ? `<a class="receipt-link" href="${esc(r.receiptUrl)}" target="_blank" rel="noopener">🧾 عرض الإيصال</a>` : ""}
         <div class="actions">
           ${r.receiptUrl ? `<button class="btn btn-sm btn-danger" data-action="rejectReceipt" data-id="${r.id}">✖ رفض الإيصال</button>` : ""}
@@ -158,11 +158,11 @@
 
   function renderActive() {
     const t = FZ.now();
-    const items = list("active");
+    const items = list("active").concat(list("returning"));
     $("secActive").innerHTML = items.length ? items.map(r => {
       let due;
-      if (t < r.dueAt) due = `متبقي <b data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</b>`;
-      else if (t < r.dueAt + FZ.GRACE) due = `<span class="warn-text">انتهت المدة — ساعة السماح (<b data-to="${r.dueAt + FZ.GRACE}"></b>)</span>`;
+      if (r.status === "returning") due = `<span class="warn-text">فُتح القسم للإرجاع ${FZ.fmtTime(r.returnedAt)} — بانتظار ضغط الطالب «تم الإرجاع»${r.lateFee ? ` · رسوم ${money(r.lateFee)}` : ""}</span>`;
+      else if (t < r.dueAt) due = `متبقي <b data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</b>`;
       else due = `<span class="danger-text">متأخر! الرسوم الحالية ${money(FZ.lateFeeFor(r, S.tools[r.toolId], t))}</span>`;
       return `<div class="admin-card ${t > r.dueAt ? "is-late" : ""}">
           <div class="admin-card-top"><b>${esc(r.toolName)}</b><span class="muted small">القسم ${r.compartment}</span></div>
@@ -170,7 +170,7 @@
           <div class="small">استُلمت: ${FZ.fmtTime(r.startAt)} · الإرجاع: ${FZ.fmtTime(r.dueAt)}</div>
           <div class="small">${due}</div>
           <div class="actions">
-            <button class="btn btn-sm btn-ghost" data-action="manualReturn" data-id="${r.id}">تسجيل إرجاع يدوي</button>
+            <button class="btn btn-sm btn-ghost" data-action="manualReturn" data-id="${r.id}">${r.status === "returning" ? "تأكيد الإرجاع" : "تسجيل إرجاع يدوي"}</button>
           </div>
         </div>`;
     }).join("") : empty("لا توجد أدوات مستأجرة.");
@@ -531,17 +531,21 @@
 
   async function completeReturn(rid) {
     const r = (await FZ.db.ref(`rentals/${rid}`).get()).val();
-    if (!r || r.status !== "active") throw new Error("العملية ليست في حالة استئجار نشط");
-    const tool = (await FZ.db.ref(`tools/${r.toolId}`).get()).val();
-    const t = FZ.now();
-    const fee = FZ.lateFeeFor(r, tool, t);
+    if (!r || (r.status !== "active" && r.status !== "returning")) throw new Error("العملية ليست في حالة استئجار نشط");
     const upd = {
       [`rentals/${rid}/status`]: "returned",
-      [`rentals/${rid}/returnedAt`]: FZ.TS,
-      [`rentals/${rid}/lateFee`]: fee,
       [`tools/${r.toolId}/status`]: "available",
       ...clearActive(r, rid)
     };
+    if (r.status === "returning") {           // الصندوق فتح للإرجاع والرسوم مسجّلة — فقط نؤكد
+      upd[`rentals/${rid}/returnConfirmedAt`] = FZ.TS;
+      await FZ.db.ref().update(upd);
+      return r.lateFee || 0;
+    }
+    const tool = (await FZ.db.ref(`tools/${r.toolId}`).get()).val();
+    const fee = FZ.lateFeeFor(r, tool, FZ.now());
+    upd[`rentals/${rid}/returnedAt`] = FZ.TS;
+    upd[`rentals/${rid}/lateFee`] = fee;
     if (fee > 0) {
       upd[`rentals/${rid}/lateFeePaid`] = false;
       upd[`users/${r.uid}/state/lateFeeDue`] = firebase.database.ServerValue.increment(fee);
@@ -557,7 +561,7 @@
     if (!p) return { ok: false, msg: "رمز غير صحيح" };
     if (p.used) return { ok: false, msg: "الرمز مستخدم مسبقاً" };
     const t = FZ.now();
-    if (t - p.createdAt > FZ.UNLOCK_TTL) return { ok: false, msg: "انتهت مهلة الطلب (أكثر من دقيقة)" };
+    if (t - p.createdAt > FZ.PIN_TTL) return { ok: false, msg: "انتهت صلاحية الرمز (10 دقائق)" };
     const r = (await FZ.db.ref(`rentals/${p.rentalId}`).get()).val();
     if (!r || r.currentPin !== code) return { ok: false, msg: "الرمز غير مرتبط بعملية صالحة" };
     if (r.compartment !== p.compartment) return { ok: false, msg: "الرمز لا يخص هذا القسم" };
@@ -579,9 +583,21 @@
       });
       return { ok: true, compartment: r.compartment, msg: `✅ فُتح القسم ${r.compartment} — استلم الأداة` };
     }
-    const fee = await completeReturn(p.rentalId);
+    // إرجاع: يفتح القسم ويسجّل وقت الإرجاع والرسوم — الطالب يضغط «تم الإرجاع» بعد ما يحط الأداة
+    const tool = (await FZ.db.ref(`tools/${r.toolId}`).get()).val();
+    const fee = FZ.lateFeeFor(r, tool, t);
+    const upd = {
+      [`rentals/${p.rentalId}/status`]: "returning",
+      [`rentals/${p.rentalId}/returnedAt`]: FZ.TS,
+      [`rentals/${p.rentalId}/lateFee`]: fee
+    };
+    if (fee > 0) {
+      upd[`rentals/${p.rentalId}/lateFeePaid`] = false;
+      upd[`users/${r.uid}/state/lateFeeDue`] = firebase.database.ServerValue.increment(fee);
+    }
+    await FZ.db.ref().update(upd);
     return { ok: true, compartment: r.compartment,
-      msg: `✅ فُتح القسم ${r.compartment} — تم تسجيل الإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
+      msg: `✅ فُتح القسم ${r.compartment} للإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
   }
 
   // -------------------- طلبات فتح الصندوق --------------------
@@ -589,7 +605,7 @@
   function pendingUnlocks() {
     const t = FZ.now();
     return Object.entries(S.pins || {})
-      .filter(([, p]) => p && !p.used && t - p.createdAt <= FZ.UNLOCK_TTL)
+      .filter(([, p]) => p && !p.used && t - p.createdAt <= FZ.PIN_TTL)
       .map(([code, p]) => ({ code, ...p }))
       .sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -626,11 +642,17 @@
     if (b) runUnlock(b.dataset.code);
   });
 
-  // في وضع المحاكاة تُنفَّذ الطلبات تلقائياً كما ستفعل الشريحة
-  setInterval(() => {
-    renderUnlocks();
-    if ($("simBeat") && $("simBeat").checked) pendingUnlocks().forEach(p => runUnlock(p.code));
-  }, 1500);
+  setInterval(renderUnlocks, 1500);
+
+  // محاكاة لوحة الأرقام: المسؤول يكتب الرمز كما يكتبه الطالب عند الصندوق
+  document.addEventListener("submit", e => {
+    if (e.target.id !== "kpForm") return;
+    e.preventDefault();
+    const code = $("kpInput").value.trim();
+    $("kpInput").value = "";
+    handled.delete(code);
+    runUnlock(code);
+  });
 
   // -------------------- نبضة وهمية (اختبار بدون ESP32) --------------------
   let simTimer = null;

@@ -7,7 +7,7 @@ const FZ = (() => {
   const PIN_TTL = 10 * MIN;        // أقصى عمر لطلب الفتح في قاعدة البيانات
   const UNLOCK_TTL = 60 * 1000;    // الشريحة تنفّذ طلب الفتح فقط إذا كان عمره أقل من دقيقة
   const BOX_TIMEOUT = 90 * 1000;   // يُعتبر الصندوق غير متصل إذا لم يرسل نبضة خلال 90 ثانية (النبضة كل 30 ثانية)
-  const GRACE = HOUR;              // ساعة سماح بعد انتهاء المدة قبل تسجيل رسوم التأخير
+  const GRACE = 0;                 // لا يوجد وقت سماح: رسوم التأخير تبدأ مباشرة بعد انتهاء المدة
 
   const ready = !!(typeof firebaseConfig !== "undefined" && firebaseConfig.apiKey && firebaseConfig.databaseURL);
   let auth = null, db = null;
@@ -83,7 +83,7 @@ const FZ = (() => {
     return r;
   }
 
-  // رسوم التأخير: تُحسب فقط إذا تجاوز التأخير ساعة السماح، بعدد ساعات التأخير (تقريب لأعلى) × سعر الساعة
+  // رسوم التأخير: تبدأ مباشرة بعد انتهاء المدة — عدد ساعات التأخير (تقريب لأعلى) × سعر الساعة
   function lateFeeFor(rental, tool, at) {
     withDue(rental);
     if (!rental || !rental.dueAt) return 0;
@@ -96,6 +96,7 @@ const FZ = (() => {
     pending:   { label: "بانتظار تأكيد الدفع", cls: "pending" },
     paid:      { label: "تم تأكيد الدفع",       cls: "paid" },
     active:    { label: "مستأجرة حالياً",        cls: "active" },
+    returning: { label: "بانتظار تأكيد الإرجاع", cls: "pending" },
     returned:  { label: "تم الإرجاع",            cls: "returned" },
     cancelled: { label: "ملغي",                  cls: "muted" },
     rejected:  { label: "مرفوض",                 cls: "danger" }

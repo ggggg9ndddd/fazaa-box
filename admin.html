@@ -93,13 +93,17 @@
                 <div class="admin-col">
                     <section class="admin-section">
                         <h2 class="section-title">🔓 طلبات فتح الصندوق</h2>
-                        <p class="hint">لما يضغط الطالب «افتح القسم» يظهر طلبه هنا، والشريحة داخل الصندوق تنفّذه تلقائياً. قبل تركيب الشريحة: فعّل المحاكاة تحت واضغط «تنفيذ».</p>
+                        <p class="hint">لما يطلب الطالب رمز استلام أو إرجاع يظهر هنا. الطالب يكتب الرمز في لوحة أرقام الصندوق. قبل تركيب الصندوق: فعّل المحاكاة واكتب الرمز تحت (أو اضغط «تنفيذ»).</p>
                         <div class="keypad-wrap">
                             <div id="unlockList" class="unlock-list"></div>
+                            <form id="kpForm" class="add-admin">
+                                <input type="text" id="kpInput" class="form-control" inputmode="numeric" maxlength="6" placeholder="اكتب الرمز (6 أرقام)" dir="ltr">
+                                <button class="btn btn-accent" type="submit">إدخال #</button>
+                            </form>
                             <div class="keypad-result" id="kpResult"></div>
                             <div class="compartments" id="compartments"></div>
                             <label class="switch-row"><input type="checkbox" id="simBeat">
-                                <span>محاكاة الصندوق من هذه الصفحة (اتصال + تنفيذ طلبات الفتح تلقائياً) — للاختبار فقط قبل تركيب الشريحة</span></label>
+                                <span>محاكاة اتصال الصندوق من هذه الصفحة — للاختبار فقط قبل تركيب الصندوق</span></label>
                         </div>
                     </section>
 

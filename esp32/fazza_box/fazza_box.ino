@@ -4,13 +4,14 @@
  *
  *  كيف يشتغل:
  *   - كل 30 ثانية يكتب box/lastSeen  ← الموقع يعرض «الصندوق متصل»
- *   - كل ثانيتين يشيّك على طلبات الفتح (pins) اللي يسويها الطالب
- *     لما يضغط «افتح القسم» في الموقع
- *   - يتحقق من الطلب، يفتح السيرفو، ويحدّث الحجز:
- *       استلام  ← status = active
- *       إرجاع   ← status = returned + رسوم التأخير إن وجدت
+ *   - الطالب يطلب رمز (6 أرقام) من الموقع ويكتبه في لوحة الأرقام ثم #
+ *   - الصندوق يتحقق من الرمز في Firebase، يفتح القسم، ويحدّث الحجز:
+ *       استلام  ← status = active (يبدأ وقت الإيجار)
+ *       إرجاع   ← status = returning + رسوم التأخير (تبدأ مباشرة بعد انتهاء المدة)
+ *                  ثم الطالب يضغط «تم الإرجاع» في الموقع
+ *   - *  = مسح الإدخال
  *
- *  المكتبات (Library Manager):  ArduinoJson (7.x)  +  ESP32Servo
+ *  المكتبات (Library Manager):  ArduinoJson (7.x) + ESP32Servo + Keypad (Mark Stanley)
  *  اللوحة: ESP32 Dev Module
  * =====================================================================
  */
@@ -19,6 +20,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
+#include <Keypad.h>
 #include <time.h>
 
 // ======================= عدّل هذه القيم =======================
@@ -40,12 +42,18 @@ const int UNLOCKED_ANGLE  = 90;
 const unsigned long OPEN_TIME = 10000;  // كم يبقى القسم مفتوح (10 ثواني)
 const int STATUS_LED = 2;               // LED اللوحة يضيء لما يكون متصل
 
+// لوحة الأرقام 4×3 (نفس توصيلاتك الحالية)
+const byte ROWS = 4, COLS = 3;
+char keys[ROWS][COLS] = { {'1','2','3'}, {'4','5','6'}, {'7','8','9'}, {'*','0','#'} };
+byte rowPins[ROWS] = {13, 14, 27, 26};
+byte colPins[COLS] = {25, 33, 32};
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+String entered = "";
+
 const unsigned long HEARTBEAT_MS = 30000;
-const unsigned long POLL_MS      = 2000;
 const unsigned long RELOGIN_MS   = 50UL * 60UL * 1000UL;  // التوكن يعيش ساعة
-const long long UNLOCK_TTL_MS    = 60000;                  // الطلب صالح دقيقة
+const long long PIN_TTL_MS       = 10LL * 60LL * 1000LL;   // الرمز صالح 10 دقائق
 const long long HOUR_MS          = 3600000LL;
-const long long GRACE_MS         = HOUR_MS;                // ساعة سماح
 
 Servo servos[2];
 unsigned long openSince[2] = {0, 0};
@@ -53,9 +61,7 @@ bool isOpen[2] = {false, false};
 
 WiFiClientSecure tls;
 String idToken = "";
-unsigned long tokenAt = 0, lastBeat = 0, lastPoll = 0;
-String handled[16];
-int handledIdx = 0;
+unsigned long tokenAt = 0, lastBeat = 0;
 
 // ---------------------------------------------------------------
 long long nowMs() {
@@ -143,40 +149,43 @@ void relockTick() {
   }
 }
 
-bool alreadyHandled(const String& id) {
-  for (int i = 0; i < 16; i++) if (handled[i] == id) return true;
-  return false;
-}
-
 // ---------------------------------------------------------------
-void processRequest(const String& id, JsonObject p, long long now) {
+bool processCode(const String& id, long long now) {
+  String resp;
+  if (db("GET", "/pins/" + id, "", resp) != 200) return false;
+  JsonDocument pd;
+  if (deserializeJson(pd, resp) || pd.isNull()) { Serial.println("[PIN] wrong code"); return false; }
+  JsonObject p = pd.as<JsonObject>();
+  if (p["used"] | false) { Serial.println("[PIN] code already used"); return false; }
+  long long created = p["createdAt"] | 0LL;
+  if (!created || now - created > PIN_TTL_MS) { Serial.println("[PIN] code expired"); return false; }
+
   String rid  = p["rentalId"] | "";
   String type = p["type"] | "";
   int comp    = p["compartment"] | 0;
-  if (rid.isEmpty() || comp < 1 || comp > 2) return;
+  if (rid.isEmpty() || comp < 1 || comp > 2) return false;
 
-  String resp;
-  if (db("GET", "/rentals/" + rid, "", resp) != 200) return;
+  if (db("GET", "/rentals/" + rid, "", resp) != 200) return false;
   JsonDocument r;
-  if (deserializeJson(r, resp) || r.isNull()) return;
+  if (deserializeJson(r, resp) || r.isNull()) return false;
 
-  if (String(r["currentPin"] | "") != id) { Serial.println("[REQ] old request — ignored"); return; }
-  if ((int)(r["compartment"] | 0) != comp) return;
+  if (String(r["currentPin"] | "") != id) { Serial.println("[PIN] old code"); return false; }
+  if ((int)(r["compartment"] | 0) != comp) return false;
 
   String status = r["status"] | "";
   bool pickup = (type == "pickup" && status == "paid");
   bool ret    = (type == "return" && status == "active");
-  if (!pickup && !ret) { Serial.println("[REQ] rental state does not allow — ignored"); return; }
+  if (!pickup && !ret) { Serial.println("[PIN] rental state does not allow"); return false; }
 
   long long start = r["startAt"] | 0LL;
   long long due   = r["dueAt"] | 0LL;
   if (!due && start) due = start + (long long)(r["hours"] | 0) * HOUR_MS;
-  if (ret && now < due) { Serial.println("[REQ] return before time ends — ignored"); return; }
+  if (ret && now < due) { Serial.println("[PIN] return before time ends"); return false; }
 
-  // 1) علّم الطلب مستخدم قبل الفتح (ما ينفتح مرتين)
+  // 1) علّم الرمز مستخدم قبل الفتح (ما ينفتح مرتين)
   if (db("PATCH", "/pins/" + id, "{\"used\":true,\"usedAt\":{\".sv\":\"timestamp\"}}", resp) != 200) {
-    Serial.println("[REQ] could not consume request — NOT opening");
-    return;
+    Serial.println("[PIN] could not consume code — NOT opening");
+    return false;
   }
 
   // 2) افتح القفل
@@ -193,20 +202,17 @@ void processRequest(const String& id, JsonObject p, long long now) {
     Serial.printf("[RENT] pickup %s\n", rid.c_str());
   } else {
     int fee = 0;
-    if (due && now > due + GRACE_MS) {
+    if (due && now > due) {                       // رسوم التأخير تبدأ مباشرة بعد انتهاء المدة
       int perHour = 0;
       if (db("GET", "/tools/" + toolId + "/lateFeePerHour", "", resp) == 200) perHour = resp.toInt();
       long long over = now - due;
       fee = (int)((over + HOUR_MS - 1) / HOUR_MS) * perHour;
     }
-    upd["rentals/" + rid + "/status"] = "returned";
+    // الطالب يحط الأداة ويضغط «تم الإرجاع» في الموقع ← تصير الأداة متاحة
+    upd["rentals/" + rid + "/status"] = "returning";
     upd["rentals/" + rid + "/returnedAt"][".sv"] = "timestamp";
     upd["rentals/" + rid + "/lateFee"] = fee;
     if (fee > 0) upd["rentals/" + rid + "/lateFeePaid"] = false;
-    upd["tools/" + toolId + "/status"] = "available";
-    upd["users/" + uid + "/state/activeByTool/" + toolId] = nullptr;
-    if (db("GET", "/users/" + uid + "/state/activeRental", "", resp) == 200 && resp == "\"" + rid + "\"")
-      upd["users/" + uid + "/state/activeRental"] = nullptr;   // صيغة قديمة
     if (fee > 0) {
       int current = 0;
       if (db("GET", "/users/" + uid + "/state/lateFeeDue", "", resp) == 200) current = resp.toInt();
@@ -218,27 +224,29 @@ void processRequest(const String& id, JsonObject p, long long now) {
   String body;
   serializeJson(upd, body);
   db("PATCH", "", body, resp);   // تحديث كل المسارات مرة وحدة
+  return true;
 }
 
-void pollRequests() {
-  long long now = nowMs();
-  if (!now) return;
-  String resp;
-  if (db("GET", "/pins", "", resp, "&orderBy=%22createdAt%22&limitToLast=5") != 200) return;
-  JsonDocument doc;
-  if (deserializeJson(doc, resp) || !doc.is<JsonObject>()) return;
+void blinkError() {
+  for (int i = 0; i < 3; i++) { digitalWrite(STATUS_LED, LOW); delay(150); digitalWrite(STATUS_LED, HIGH); delay(150); }
+}
 
-  for (JsonPair kv : doc.as<JsonObject>()) {
-    String id = kv.key().c_str();
-    JsonObject p = kv.value().as<JsonObject>();
-    if (p["used"] | false) continue;
-    long long created = p["createdAt"] | 0LL;
-    if (!created || now - created > UNLOCK_TTL_MS) continue;
-    if (alreadyHandled(id)) continue;
-    handled[handledIdx] = id; handledIdx = (handledIdx + 1) % 16;
-    Serial.printf("[REQ] open request %s (%s)\n", id.c_str(), (const char*)(p["type"] | ""));
-    processRequest(id, p, now);
+void handleKeypad() {
+  char key = keypad.getKey();
+  if (key == NO_KEY) return;
+  if (key == '*') { entered = ""; Serial.println("\n[KEY] cleared"); return; }
+  if (key == '#') {
+    Serial.println();
+    String code = entered;
+    entered = "";
+    if (code.length() != 6) { Serial.println("[KEY] enter 6 digits then #"); blinkError(); return; }
+    long long now = nowMs();
+    if (!now || WiFi.status() != WL_CONNECTED) { Serial.println("[KEY] offline — denied"); blinkError(); return; }
+    Serial.println("[KEY] checking code...");
+    if (!processCode(code, now)) { Serial.println("[KEY] ACCESS DENIED"); blinkError(); }
+    return;
   }
+  if (key >= '0' && key <= '9' && entered.length() < 6) { entered += key; Serial.print("*"); }
 }
 
 // ---------------------------------------------------------------
@@ -254,7 +262,7 @@ void setup() {
 
   connectWiFi();
   if (WiFi.status() == WL_CONNECTED) { syncTime(); firebaseLogin(); }
-  Serial.println("=== FAZZA BOX READY ===");
+  Serial.println("=== FAZZA BOX READY — enter 6-digit code then # ===");
 }
 
 void loop() {
@@ -274,8 +282,5 @@ void loop() {
     String resp;
     if (db("PUT", "/box/lastSeen", "{\".sv\":\"timestamp\"}", resp) == 200) Serial.println("[BEAT] online");
   }
-  if (millis() - lastPoll >= POLL_MS) {
-    lastPoll = millis();
-    pollRequests();
-  }
+  handleKeypad();
 }
