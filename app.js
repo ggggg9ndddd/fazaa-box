@@ -239,7 +239,10 @@
         لا يمكنك استئجار أداة جديدة حتى تسويتها. حوّل المبلغ وتواصل مع الفريق.
         ${contactUrl() ? `<a class="btn btn-whatsapp btn-sm mt-12" target="_blank" rel="noopener" href="${contactUrl("السلام عليكم، أبي أسدد رسوم التأخير — رقمي الجامعي " + (S.profile ? S.profile.universityId : ""))}">تواصل عبر واتساب</a>` : ""}</div>`);
     }
-    if (!FZ.box.online && activeList().some(a => ["paid", "active"].includes(a.r.status))) {
+    if (!FZ.box.enabled) {
+      out.push(`<div class="banner banner-warn"><strong>الصندوق متوقف مؤقتاً.</strong>
+        لا يمكن فتح الأقسام الآن. سيعود للعمل قريباً، وللاستفسار تواصل مع الفريق.</div>`);
+    } else if (!FZ.box.online && activeList().some(a => ["paid", "active"].includes(a.r.status))) {
       out.push(`<div class="banner banner-warn"><strong>الصندوق غير متصل حالياً.</strong>
         الأقفال مغلقة ولا يمكن فتح الأقسام حتى يعود الاتصال.</div>`);
     }
@@ -272,7 +275,7 @@
       <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>🔑 ${label}</button>
       ${FZ.box.online
         ? `<p class="hint">الرمز صالح 10 دقائق ولمرة واحدة. اطلبه وأنت قريب من الصندوق.</p>`
-        : `<p class="hint warn">الصندوق غير متصل حالياً، لا يمكن فتحه.</p>`}`;
+        : `<p class="hint warn">${FZ.box.enabled ? "الصندوق غير متصل حالياً، لا يمكن فتحه." : "الصندوق متوقف مؤقتاً، لا يمكن فتحه."}</p>`}`;
   }
 
   // رفع إيصال التحويل (يُحفظ في Google Drive ويؤكد الحجز تلقائياً)
@@ -599,7 +602,7 @@
   async function generatePin(rid, type) {
     const r = S.active[rid] && S.active[rid].r;
     if (!r) return;
-    if (!FZ.box.online) return FZ.toast("الصندوق غير متصل حالياً", "error");
+    if (!FZ.box.online) return FZ.toast(FZ.box.enabled ? "الصندوق غير متصل حالياً" : "الصندوق متوقف مؤقتاً", "error");
     if (type === "return" && FZ.now() < (r.dueAt || 0)) return FZ.toast("الإرجاع متاح بعد انتهاء مدة الاستئجار", "error");
     for (let attempt = 0; attempt < 4; attempt++) {
       const code = randomPin();

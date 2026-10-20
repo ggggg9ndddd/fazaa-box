@@ -242,6 +242,10 @@ void handleKeypad() {
     if (code.length() != 6) { Serial.println("[KEY] enter 6 digits then #"); blinkError(); return; }
     long long now = nowMs();
     if (!now || WiFi.status() != WL_CONNECTED) { Serial.println("[KEY] offline — denied"); blinkError(); return; }
+    String en;
+    if (db("GET", "/box/enabled", "", en) == 200 && en == "false") {
+      Serial.println("[KEY] box is turned OFF from admin panel — denied"); blinkError(); return;
+    }
     Serial.println("[KEY] checking code...");
     if (!processCode(code, now)) { Serial.println("[KEY] ACCESS DENIED"); blinkError(); }
     return;

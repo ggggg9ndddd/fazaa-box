@@ -674,3 +674,11 @@ header .box-status { position: relative; }
 .pin-exp { color: #94A3B8; font-size: .8rem; margin-top: 4px; }
 .pin-exp b { color: var(--accent-gold); }
 .btn-lg { padding: 16px; font-size: 1.05rem; }
+
+.box-ctl {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border: 1.5px solid var(--border-color); border-inline-start: 6px solid #22C55E;
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; background: #fff; text-align: start;
+}
+.box-ctl.is-off { border-inline-start-color: #EF4444; background: #FEF2F2; }
+.box-ctl .btn { flex: none; }

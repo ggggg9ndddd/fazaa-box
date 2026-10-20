@@ -28,18 +28,22 @@ const FZ = (() => {
   const now = () => Date.now() + offset;
 
   // ---- حالة اتصال الصندوق ----
-  const box = { lastSeen: null, online: false };
+  // connected = الصندوق يرسل نبضات ، enabled = المسؤول مشغّله ، online = جاهز للاستخدام (الاثنين)
+  const box = { lastSeen: null, enabled: true, connected: false, online: false };
   const boxListeners = [];
   function evalBox() {
-    const online = typeof box.lastSeen === "number" && now() - box.lastSeen < BOX_TIMEOUT;
-    const changed = online !== box.online;
+    box.connected = typeof box.lastSeen === "number" && now() - box.lastSeen < BOX_TIMEOUT;
+    const online = box.connected && box.enabled;
+    const changed = online !== box.online || box._was !== `${box.connected}|${box.enabled}`;
     box.online = online;
+    box._was = `${box.connected}|${box.enabled}`;
     if (changed || box._first !== false) { box._first = false; boxListeners.forEach(fn => fn(box)); }
   }
   function watchBox(fn) {
     boxListeners.push(fn);
     if (boxListeners.length === 1 && db) {
       db.ref("box/lastSeen").on("value", s => { box.lastSeen = s.val(); box._first = true; evalBox(); });
+      db.ref("box/enabled").on("value", s => { box.enabled = s.val() !== false; box._first = true; evalBox(); });
       setInterval(evalBox, 5000);
     }
   }
@@ -47,9 +51,11 @@ const FZ = (() => {
     if (!el) return;
     el.classList.toggle("online", box.online);
     el.classList.toggle("offline", !box.online);
-    el.querySelector(".txt").textContent = box.online
-      ? "الصندوق متصل"
-      : (box.lastSeen ? `الصندوق غير متصل (آخر اتصال ${fmtTime(box.lastSeen)})` : "الصندوق غير متصل");
+    el.querySelector(".txt").textContent = !box.enabled
+      ? "الصندوق متوقف مؤقتاً"
+      : box.connected
+        ? "الصندوق متصل"
+        : (box.lastSeen ? `الصندوق غير متصل (آخر اتصال ${fmtTime(box.lastSeen)})` : "الصندوق غير متصل");
   }
 
   // ---- تنسيق ----

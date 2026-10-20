@@ -111,7 +111,8 @@
       <div class="stat"><b>${c("pending")}</b><span>بانتظار الدفع</span></div>
       <div class="stat"><b>${c("paid")}</b><span>بانتظار الاستلام</span></div>
       <div class="stat"><b>${c("active")}</b><span>مستأجرة</span></div>
-      <div class="stat ${FZ.box.online ? "ok" : "bad"}"><b>${FZ.box.online ? "متصل" : "غير متصل"}</b><span>الصندوق</span></div>`;
+      <div class="stat ${FZ.box.online ? "ok" : "bad"}"><b>${!FZ.box.enabled ? "متوقف" : FZ.box.connected ? "متصل" : "غير متصل"}</b><span>الصندوق</span></div>`;
+    renderBoxControl();
   }
 
   function empty(msg) { return `<p class="muted small empty">${msg}</p>`; }
@@ -556,6 +557,7 @@
 
   async function processPin(code) {
     if (!/^\d{6}$/.test(code)) return { ok: false, msg: "طلب غير صالح" };
+    if (!FZ.box.enabled) return { ok: false, msg: "الصندوق متوقف من لوحة المسؤول — شغّله أولاً" };
     if (!FZ.box.online) return { ok: false, msg: "الصندوق غير متصل — لا تُنفَّذ طلبات الفتح" };
     const p = (await FZ.db.ref(`pins/${code}`).get()).val();
     if (!p) return { ok: false, msg: "رمز غير صحيح" };
@@ -599,6 +601,32 @@
     return { ok: true, compartment: r.compartment,
       msg: `✅ فُتح القسم ${r.compartment} للإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
   }
+
+  // -------------------- تشغيل / إيقاف الصندوق --------------------
+  function renderBoxControl() {
+    const el = $("boxControl");
+    if (!el) return;
+    const on = FZ.box.enabled;
+    el.innerHTML = `
+      <div class="box-ctl ${on ? "is-on" : "is-off"}">
+        <div>
+          <b>${on ? "الصندوق شغّال" : "الصندوق متوقف"}</b>
+          <div class="small muted">${on
+            ? (FZ.box.connected ? "متصل ويستقبل الرموز." : "مشغّل، لكنه غير متصل بالإنترنت الآن.")
+            : "لا يقبل رموز ولا يمكن للطلاب طلب رموز. الحجوزات والدفع تبقى شغّالة."}</div>
+        </div>
+        <button class="btn btn-sm ${on ? "btn-danger" : "btn-accent"}" data-action="toggleBox">${on ? "إيقاف الصندوق" : "تشغيل الصندوق"}</button>
+      </div>`;
+  }
+  document.addEventListener("click", async e => {
+    const b = e.target.closest('[data-action="toggleBox"]');
+    if (!b) return;
+    const turnOff = FZ.box.enabled;
+    if (!confirm(turnOff ? "إيقاف الصندوق؟ لن يُفتح أي قسم حتى تشغّله من جديد." : "تشغيل الصندوق؟")) return;
+    await FZ.withBusy(b, () => FZ.db.ref("box/enabled").set(!turnOff)
+      .then(() => FZ.toast(turnOff ? "تم إيقاف الصندوق" : "تم تشغيل الصندوق", "success"))
+      .catch(err => FZ.toast(FZ.authError(err), "error")));
+  });
 
   // -------------------- طلبات فتح الصندوق --------------------
   const handled = new Set();
