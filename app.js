@@ -32,10 +32,20 @@
   if (!FZ.ready) { show("view-setup"); return; }
 
   // رابط واتساب الفريق
-  const contactUrl = (text) => typeof CONTACT_WHATSAPP !== "undefined" && CONTACT_WHATSAPP
-    ? `https://wa.me/968${CONTACT_WHATSAPP}${text ? "?text=" + encodeURIComponent(text) : ""}` : null;
-  if (contactUrl()) $("waContact").href = contactUrl("السلام عليكم، عندي استفسار عن صندوق فزعة");
-  else $("waContact").style.display = "none";
+  const contactUrl = (text) => FZ.settings.contactWhatsapp
+    ? `https://wa.me/968${FZ.settings.contactWhatsapp}${text ? "?text=" + encodeURIComponent(text) : ""}` : null;
+
+  // -------------------- الإعدادات (من لوحة المسؤول) --------------------
+  FZ.onSettings(st => {
+    const h = document.querySelector(".brand-text h1"), p = document.querySelector(".brand-text p");
+    if (h && st.texts.title) h.textContent = st.texts.title;
+    if (p) p.textContent = st.texts.tagline || "";
+    if (contactUrl()) { $("waContact").href = contactUrl("السلام عليكم، عندي استفسار عن صندوق فزعة"); $("waContact").style.display = ""; }
+    else $("waContact").style.display = "none";
+    const ann = $("announcement");
+    if (ann) { ann.textContent = st.texts.announcement || ""; ann.hidden = !st.texts.announcement; }
+    if (typeof S !== "undefined" && S.user) { renderAlerts(); renderRental(); }
+  });
 
   // -------------------- اتصال الصندوق --------------------
   FZ.watchBox(() => {
@@ -234,6 +244,10 @@
   function renderAlerts() {
     const out = [];
     const fee = S.state.lateFeeDue || 0;
+    if (S.state.blocked) {
+      out.push(`<div class="banner banner-danger"><strong>حسابك موقوف عن الحجز.</strong>
+        للاستفسار تواصل مع فريق فزعة.</div>`);
+    }
     if (fee > 0) {
       out.push(`<div class="banner banner-danger"><strong>عليك رسوم تأخير: ${money(fee)}</strong>
         لا يمكنك استئجار أداة جديدة حتى تسويتها. حوّل المبلغ وتواصل مع الفريق.
@@ -274,7 +288,7 @@
     return `${note}
       <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>🔑 ${label}</button>
       ${FZ.box.online
-        ? `<p class="hint">الرمز صالح 10 دقائق ولمرة واحدة. اطلبه وأنت قريب من الصندوق.</p>`
+        ? `<p class="hint">الرمز صالح ${FZ.settings.rules.pinMinutes} دقائق ولمرة واحدة. اطلبه وأنت قريب من الصندوق.</p>`
         : `<p class="hint warn">${FZ.box.enabled ? "الصندوق غير متصل حالياً، لا يمكن فتحه." : "الصندوق متوقف مؤقتاً، لا يمكن فتحه."}</p>`}`;
   }
 
@@ -386,11 +400,12 @@
     let body = "";
 
     if (r.status === "pending") {
-      const accounts = (PAYMENT_INFO.accounts || []).map(x =>
+      const accts = FZ.settings.payment.accounts;
+      const accounts = accts.map(x =>
         `<p><strong>${esc(x.label)}:</strong> <span class="account-number">${esc(x.value)}</span></p>`).join("");
       body = `
         <div class="payment-info">
-          <p>حوّل <strong>${money(r.amount)}</strong> إلى ${(PAYMENT_INFO.accounts || []).length > 1 ? "أحد الحسابات التالية" : "الحساب التالي"}:</p>
+          <p>حوّل <strong>${money(r.amount)}</strong> إلى ${accts.length > 1 ? "أحد الحسابات التالية" : "الحساب التالي"}:</p>
           ${accounts}
           <p class="mt-12">اكتب هذا <strong>الرمز المرجعي</strong> في ملاحظة/وصف التحويل:</p>
           <div class="ref-code" dir="ltr">${esc(r.ref)}</div>
@@ -413,13 +428,16 @@
             <div class="due-timer" data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</div>
             <div class="muted small">موعد الإرجاع: ${FZ.fmtTime(r.dueAt)}</div>
           </div>`;
+      } else if (t < r.dueAt + FZ.GRACE) {
+        due = `<div class="banner banner-warn"><strong>⏰ انتهت مدة الاستئجار — أرجع الأداة الآن</strong>
+            تبدأ رسوم التأخير بعد <b data-to="${r.dueAt + FZ.GRACE}">${FZ.fmtCountdown(r.dueAt + FZ.GRACE - t)}</b>.</div>`;
       } else {
         const fee = FZ.lateFeeFor(r, S.tools[r.toolId], t);
         due = `<div class="banner banner-danger"><strong>⏰ انتهت مدة الاستئجار — أرجع الأداة الآن</strong>
             رسوم التأخير حتى الآن: <b>${money(fee)}</b>، وتزيد كل ساعة إلى أن تُرجع الأداة.
             لن تتمكن من الاستئجار مجدداً حتى تسويتها.</div>`;
       }
-      const returnSection = `<h3 class="sub-title">إرجاع الأداة</h3>` + (t < r.dueAt
+      const returnSection = `<h3 class="sub-title">إرجاع الأداة</h3>` + (FZ.RETURN_AFTER_DUE && t < r.dueAt
         ? `<p class="hint">زر الإرجاع يتفعّل بعد انتهاء مدة الاستئجار، وبعدها تفتح <b>القسم رقم ${r.compartment}</b> وتضع الأداة داخله.</p>
         <button class="btn btn-primary btn-block btn-lg" disabled>🔒 يتفعّل بعد <span data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</span></button>`
         : `<p class="hint">اطلب رمز الإرجاع، اكتبه في لوحة أرقام الصندوق لفتح <b>القسم رقم ${r.compartment}</b>، ضع الأداة داخله، ثم اضغط «تم الإرجاع».</p>
@@ -444,7 +462,7 @@
     return activeList().map(a => {
       const r = a.r;
       const pinValid = a.pin && !a.pin.used && t - a.pin.createdAt <= FZ.PIN_TTL;
-      const duePhase = r.dueAt ? (t < r.dueAt ? 0 : 1) : -1;
+      const duePhase = r.dueAt ? (t < r.dueAt ? 0 : t < r.dueAt + FZ.GRACE ? 1 : 2) : -1;
       return `${a.rid}:${r.status}|${pinValid}|${duePhase}`;
     }).join(",");
   }
@@ -453,7 +471,7 @@
     const grid = $("toolsGrid");
     const ids = Object.keys(S.tools).sort((a, b) => (S.tools[a].compartment || 0) - (S.tools[b].compartment || 0));
     if (!ids.length) { grid.innerHTML = `<p class="muted">لا توجد أدوات بعد.</p>`; return; }
-    const blocked = (S.state.lateFeeDue || 0) > 0;
+    const blocked = (S.state.lateFeeDue || 0) > 0 || S.state.blocked === true;
     const mine = new Set(activeList().map(a => a.r.toolId).concat(Object.keys(S.state.activeByTool || {})));
     grid.innerHTML = ids.map(id => {
       const t = S.tools[id];
@@ -496,8 +514,8 @@
       <ul class="rules-list">
         <li>تقدر تحجز أكثر من أداة، وكل أداة لها حجز ودفع وإرجاع مستقل.</li>
         <li>بعد الدفع ارفع الإيصال، ويؤكد المسؤول حجزك.</li>
-        <li>الاستلام والإرجاع برمز تكتبه في لوحة أرقام الصندوق. الرمز صالح 10 دقائق ولمرة واحدة.</li>
-        <li>رسوم التأخير تبدأ مباشرة بعد انتهاء المدة (${money(t.lateFeePerHour)} لكل ساعة)، ويُمنع الاستئجار حتى تسويتها.</li>
+        <li>الاستلام والإرجاع برمز تكتبه في لوحة أرقام الصندوق. الرمز صالح ${FZ.settings.rules.pinMinutes} دقائق ولمرة واحدة.</li>
+        <li>${FZ.GRACE ? `بعد انتهاء المدة لديك ${FZ.settings.rules.graceMinutes} دقيقة، بعدها تبدأ` : "تبدأ"} رسوم التأخير (${money(t.lateFeePerHour)} لكل ساعة)، ويُمنع الاستئجار حتى تسويتها.</li>
       </ul>
       <button class="btn btn-block mt-20" data-action="book">تأكيد الطلب والانتقال للدفع</button>`;
   }
@@ -603,7 +621,7 @@
     const r = S.active[rid] && S.active[rid].r;
     if (!r) return;
     if (!FZ.box.online) return FZ.toast(FZ.box.enabled ? "الصندوق غير متصل حالياً" : "الصندوق متوقف مؤقتاً", "error");
-    if (type === "return" && FZ.now() < (r.dueAt || 0)) return FZ.toast("الإرجاع متاح بعد انتهاء مدة الاستئجار", "error");
+    if (type === "return" && FZ.RETURN_AFTER_DUE && FZ.now() < (r.dueAt || 0)) return FZ.toast("الإرجاع متاح بعد انتهاء مدة الاستئجار", "error");
     for (let attempt = 0; attempt < 4; attempt++) {
       const code = randomPin();
       try {

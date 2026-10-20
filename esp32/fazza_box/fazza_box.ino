@@ -39,7 +39,7 @@ const char* DB_URL = "https://fazza-33661-default-rtdb.europe-west1.firebasedata
 const int SERVO_PINS[2]   = {18, 19};   // القسم 1 ، القسم 2
 const int LOCKED_ANGLE    = 0;
 const int UNLOCKED_ANGLE  = 90;
-const unsigned long OPEN_TIME = 10000;  // كم يبقى القسم مفتوح (10 ثواني)
+unsigned long OPEN_TIME = 10000;        // كم يبقى القسم مفتوح — يتحدّث من لوحة المسؤول (الإعدادات)
 const int STATUS_LED = 2;               // LED اللوحة يضيء لما يكون متصل
 
 // لوحة الأرقام 4×3 (نفس توصيلاتك الحالية)
@@ -52,8 +52,12 @@ String entered = "";
 
 const unsigned long HEARTBEAT_MS = 30000;
 const unsigned long RELOGIN_MS   = 50UL * 60UL * 1000UL;  // التوكن يعيش ساعة
-const long long PIN_TTL_MS       = 10LL * 60LL * 1000LL;   // الرمز صالح 10 دقائق
 const long long HOUR_MS          = 3600000LL;
+// هذي القيم تتحدّث كل دقيقة من لوحة المسؤول (settings/rules)
+long long PIN_TTL_MS   = 10LL * 60LL * 1000LL;   // صلاحية الرمز
+long long GRACE_MS     = 0;                      // وقت سماح قبل الغرامة
+bool RETURN_AFTER_DUE  = true;                   // الإرجاع فقط بعد انتهاء المدة
+unsigned long lastSettings = 0;
 
 Servo servos[2];
 unsigned long openSince[2] = {0, 0};
@@ -180,7 +184,7 @@ bool processCode(const String& id, long long now) {
   long long start = r["startAt"] | 0LL;
   long long due   = r["dueAt"] | 0LL;
   if (!due && start) due = start + (long long)(r["hours"] | 0) * HOUR_MS;
-  if (ret && now < due) { Serial.println("[PIN] return before time ends"); return false; }
+  if (ret && RETURN_AFTER_DUE && now < due) { Serial.println("[PIN] return before time ends"); return false; }
 
   // 1) علّم الرمز مستخدم قبل الفتح (ما ينفتح مرتين)
   if (db("PATCH", "/pins/" + id, "{\"used\":true,\"usedAt\":{\".sv\":\"timestamp\"}}", resp) != 200) {
@@ -202,7 +206,7 @@ bool processCode(const String& id, long long now) {
     Serial.printf("[RENT] pickup %s\n", rid.c_str());
   } else {
     int fee = 0;
-    if (due && now > due) {                       // رسوم التأخير تبدأ مباشرة بعد انتهاء المدة
+    if (due && now > due + GRACE_MS) {            // رسوم التأخير بعد وقت السماح (من الإعدادات)
       int perHour = 0;
       if (db("GET", "/tools/" + toolId + "/lateFeePerHour", "", resp) == 200) perHour = resp.toInt();
       long long over = now - due;
@@ -225,6 +229,19 @@ bool processCode(const String& id, long long now) {
   serializeJson(upd, body);
   db("PATCH", "", body, resp);   // تحديث كل المسارات مرة وحدة
   return true;
+}
+
+void loadSettings() {
+  String resp;
+  if (db("GET", "/settings/rules", "", resp) != 200) return;
+  JsonDocument d;
+  if (deserializeJson(d, resp) || d.isNull()) return;
+  OPEN_TIME        = (unsigned long)(d["openSeconds"] | 10) * 1000UL;
+  PIN_TTL_MS       = (long long)(d["pinMinutes"] | 10) * 60000LL;
+  GRACE_MS         = (long long)(d["graceMinutes"] | 0) * 60000LL;
+  RETURN_AFTER_DUE = d["returnOnlyAfterDue"] | true;
+  Serial.printf("[SET] open %lus, code %lld min, grace %lld min, returnAfterDue %d\n",
+                OPEN_TIME / 1000, PIN_TTL_MS / 60000, GRACE_MS / 60000, RETURN_AFTER_DUE);
 }
 
 void blinkError() {
@@ -286,5 +303,6 @@ void loop() {
     String resp;
     if (db("PUT", "/box/lastSeen", "{\".sv\":\"timestamp\"}", resp) == 200) Serial.println("[BEAT] online");
   }
+  if (lastSettings == 0 || millis() - lastSettings >= 60000) { lastSettings = millis(); loadSettings(); }
   handleKeypad();
 }

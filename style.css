@@ -682,3 +682,15 @@ header .box-status { position: relative; }
 }
 .box-ctl.is-off { border-inline-start-color: #EF4444; background: #FEF2F2; }
 .box-ctl .btn { flex: none; }
+
+.announce {
+    background: #FFF4CC; border: 1px solid #F5D66B; color: var(--primary-navy);
+    border-radius: 12px; padding: 10px 14px; margin-bottom: 16px;
+    font-weight: 500; white-space: pre-line;
+}
+.settings-grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.settings-grid .full { grid-column: 1 / -1; }
+.settings-block { border: 1.5px solid var(--border-color); border-radius: 12px; padding: 14px; margin-bottom: 14px; text-align: start; }
+.settings-block h3 { font-size: .98rem; font-weight: 600; color: var(--primary-navy); margin-bottom: 10px; }
+.acct-row { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 8px; margin-bottom: 8px; }
+@media (max-width: 520px) { .settings-grid { grid-template-columns: 1fr; } .acct-row { grid-template-columns: 1fr; } }

@@ -171,6 +171,7 @@
           <div class="small">استُلمت: ${FZ.fmtTime(r.startAt)} · الإرجاع: ${FZ.fmtTime(r.dueAt)}</div>
           <div class="small">${due}</div>
           <div class="actions">
+            ${r.status === "active" ? `<button class="btn btn-sm btn-ghost" data-action="extend" data-id="${r.id}">⏱ تمديد / تقليل الوقت</button>` : ""}
             <button class="btn btn-sm btn-ghost" data-action="manualReturn" data-id="${r.id}">${r.status === "returning" ? "تأكيد الإرجاع" : "تسجيل إرجاع يدوي"}</button>
           </div>
         </div>`;
@@ -314,7 +315,7 @@
           uid, name: p.name, universityId: p.universityId, phone: p.phone, email: p.email,
           createdAt: p.createdAt, rentals: (counts[uid] || {}).total || 0,
           status: actives.length ? actives.map(x => (FZ.STATUS[x.status] || {}).label + " — " + x.toolName).join(" | ") : "لا يوجد حجز",
-          fee: st.lateFeeDue || 0
+          fee: st.lateFeeDue || 0, blocked: st.blocked === true
         };
       })
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -326,7 +327,7 @@
     const q = ($("usersSearch").value || "").trim().toLowerCase();
     const rows = q ? all.filter(u => [u.name, u.universityId, u.phone, u.email].join(" ").toLowerCase().includes(q)) : all;
     $("usersBody").innerHTML = rows.length ? rows.map(u => `<tr>
-        <td><b>${esc(u.name)}</b></td>
+        <td><b>${esc(u.name)}</b>${u.blocked ? ` <span class="badge badge-danger">موقوف</span>` : ""}</td>
         <td>${esc(u.universityId)}</td>
         <td><a href="https://wa.me/968${esc(u.phone)}" target="_blank" rel="noopener">${esc(u.phone)}</a></td>
         <td dir="ltr">${esc(u.email)}</td>
@@ -334,7 +335,11 @@
         <td>${u.rentals}</td>
         <td>${esc(u.status)}</td>
         <td class="${u.fee ? "danger-text" : ""}">${u.fee ? money(u.fee) : "—"}</td>
-      </tr>`).join("") : `<tr><td colspan="8" class="muted">لا يوجد مستخدمون${q ? " مطابقون للبحث" : ""}.</td></tr>`;
+        <td class="nowrap">
+          <button class="btn btn-sm ${u.blocked ? "btn-accent" : "btn-ghost"}" data-action="toggleBlock" data-uid="${esc(u.uid)}">${u.blocked ? "إلغاء الإيقاف" : "إيقاف"}</button>
+          <button class="btn btn-sm btn-ghost" data-action="editFee" data-uid="${esc(u.uid)}">الغرامة</button>
+        </td>
+      </tr>`).join("") : `<tr><td colspan="9" class="muted">لا يوجد مستخدمون${q ? " مطابقون للبحث" : ""}.</td></tr>`;
   }
   $("usersSearch").addEventListener("input", renderUsers);
 
@@ -452,6 +457,38 @@
           });
           await FZ.db.ref().update(upd);
           FZ.toast("تمت التسوية — يمكن للطالب الاستئجار مجدداً", "success");
+        } else if (a === "extend") {
+          const v = prompt("كم ساعة تبي تضيف لموعد الإرجاع؟ (اكتب رقم سالب للتقليل، مثلاً 1 أو 0.5 أو -1)", "1");
+          if (v === null) return;
+          const h = Number(v);
+          if (!isFinite(h) || h === 0) throw new Error("اكتب رقم صحيح");
+          const due = (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR)) + Math.round(h * FZ.HOUR);
+          await FZ.db.ref(`rentals/${id}`).update({ dueAt: due, extendedBy: FZ.auth.currentUser.uid });
+          FZ.toast(`موعد الإرجاع الجديد: ${FZ.fmtTime(due)}`, "success");
+        } else if (a === "toggleBlock") {
+          const uid = btn.dataset.uid;
+          const u = S.users[uid] || {}, st = u.state || {}, name = (u.profile || {}).name || uid;
+          const block = st.blocked !== true;
+          if (!confirm(block ? `إيقاف ${name} عن الحجز؟` : `إلغاء إيقاف ${name}؟`)) return;
+          await FZ.db.ref(`users/${uid}/state/blocked`).set(block ? true : null);
+          FZ.toast(block ? "تم إيقاف الطالب عن الحجز" : "تم إلغاء الإيقاف", "success");
+        } else if (a === "editFee") {
+          const uid = btn.dataset.uid;
+          const cur = ((S.users[uid] || {}).state || {}).lateFeeDue || 0;
+          const v = prompt("الغرامة المستحقة بالبيسة (0 = إعفاء كامل):", String(cur));
+          if (v === null) return;
+          const n = Math.round(Number(v));
+          if (!isFinite(n) || n < 0) throw new Error("اكتب رقم صحيح (بالبيسة)");
+          const upd = { [`users/${uid}/state/lateFeeDue`]: n };
+          if (n === 0) Object.entries(S.rentals).forEach(([rid, x]) => {
+            if (x.uid === uid && x.lateFee > 0 && !x.lateFeePaid) upd[`rentals/${rid}/lateFeePaid`] = true;
+          });
+          await FZ.db.ref().update(upd);
+          FZ.toast(n ? `الغرامة الآن ${money(n)}` : "تم إعفاء الطالب من الغرامة", "success");
+        } else if (a === "acctAdd") {
+          readAccts(); acctDraft.push({ label: "", value: "" }); renderAccts();
+        } else if (a === "acctDel") {
+          readAccts(); acctDraft.splice(Number(btn.dataset.i), 1); renderAccts();
         } else if (a === "toolStatus") {
           await FZ.db.ref(`tools/${id}/status`).set(btn.dataset.status);
         } else if (a === "exportUsers") {
@@ -563,13 +600,13 @@
     if (!p) return { ok: false, msg: "رمز غير صحيح" };
     if (p.used) return { ok: false, msg: "الرمز مستخدم مسبقاً" };
     const t = FZ.now();
-    if (t - p.createdAt > FZ.PIN_TTL) return { ok: false, msg: "انتهت صلاحية الرمز (10 دقائق)" };
+    if (t - p.createdAt > FZ.PIN_TTL) return { ok: false, msg: `انتهت صلاحية الرمز (${FZ.settings.rules.pinMinutes} دقائق)` };
     const r = (await FZ.db.ref(`rentals/${p.rentalId}`).get()).val();
     if (!r || r.currentPin !== code) return { ok: false, msg: "الرمز غير مرتبط بعملية صالحة" };
     if (r.compartment !== p.compartment) return { ok: false, msg: "الرمز لا يخص هذا القسم" };
     if (p.type === "pickup" && r.status !== "paid") return { ok: false, msg: "العملية ليست جاهزة للاستلام" };
     if (p.type === "return" && r.status !== "active") return { ok: false, msg: "لا يوجد استئجار نشط لإرجاعه" };
-    if (p.type === "return" && t < (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR))) return { ok: false, msg: "الإرجاع متاح بعد انتهاء مدة الاستئجار فقط" };
+    if (p.type === "return" && FZ.RETURN_AFTER_DUE && t < (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR))) return { ok: false, msg: "الإرجاع متاح بعد انتهاء مدة الاستئجار فقط" };
 
     // حجز الرمز ذرّياً حتى لا يُستخدم مرتين
     const tx = await FZ.db.ref(`pins/${code}/used`).transaction(u => (u ? undefined : true));
@@ -601,6 +638,64 @@
     return { ok: true, compartment: r.compartment,
       msg: `✅ فُتح القسم ${r.compartment} للإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
   }
+
+  // -------------------- الإعدادات --------------------
+  let acctDraft = [], settingsDirty = false;
+  function renderAccts() {
+    $("acctRows").innerHTML = acctDraft.map((x, i) => `
+      <div class="acct-row">
+        <input class="form-control acct-label" placeholder="اسم الحساب (مثلاً: بنك نزوى)" value="${esc(x.label)}">
+        <input class="form-control acct-value" placeholder="الرقم" dir="ltr" value="${esc(x.value)}">
+        <button type="button" class="btn btn-sm btn-ghost" data-action="acctDel" data-i="${i}">حذف</button>
+      </div>`).join("") || `<p class="hint text-start">لا يوجد حساب تحويل — أضف واحد على الأقل.</p>`;
+  }
+  function readAccts() {
+    acctDraft = [...document.querySelectorAll("#acctRows .acct-row")].map(row => ({
+      label: row.querySelector(".acct-label").value.trim(), value: row.querySelector(".acct-value").value.trim()
+    }));
+  }
+  function fillSettings(st) {
+    if (settingsDirty) return;           // لا نمسح تعديلات المسؤول وهو يكتب
+    acctDraft = st.payment.accounts.map(a => ({ label: a.label || "", value: a.value || "" }));
+    renderAccts();
+    $("setWhatsapp").value = st.contactWhatsapp || "";
+    $("setOpen").value = st.rules.openSeconds;
+    $("setPin").value = st.rules.pinMinutes;
+    $("setGrace").value = st.rules.graceMinutes;
+    $("setReturnAfter").checked = st.rules.returnOnlyAfterDue !== false;
+    $("setTitle").value = st.texts.title || "";
+    $("setTagline").value = st.texts.tagline || "";
+    $("setAnnounce").value = st.texts.announcement || "";
+  }
+  FZ.onSettings(fillSettings);
+  $("settingsForm").addEventListener("input", () => { settingsDirty = true; });
+  $("settingsForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    readAccts();
+    const accounts = acctDraft.filter(a => a.value);
+    const wa = $("setWhatsapp").value.trim();
+    const num = (id, min, max) => { const n = Number($(id).value); if (!isFinite(n) || n < min || n > max) throw new Error(`القيمة في «${$(id).labels[0].textContent}» لازم بين ${min} و ${max}`); return n; };
+    try {
+      if (!accounts.length) throw new Error("أضف رقم تحويل واحد على الأقل");
+      if (wa && !/^[0-9]{8}$/.test(wa)) throw new Error("رقم الواتساب لازم 8 أرقام");
+      const val = {
+        payment: { accounts },
+        contactWhatsapp: wa,
+        rules: {
+          openSeconds: num("setOpen", 3, 120), pinMinutes: num("setPin", 1, 30),
+          graceMinutes: num("setGrace", 0, 1440), returnOnlyAfterDue: $("setReturnAfter").checked
+        },
+        texts: { title: $("setTitle").value.trim() || "صندوق فزعة", tagline: $("setTagline").value.trim(), announcement: $("setAnnounce").value.trim() },
+        updatedAt: FZ.TS, updatedBy: FZ.auth.currentUser.uid
+      };
+      const btn = e.submitter;
+      await FZ.withBusy(btn, () => FZ.db.ref("settings").set(val));
+      settingsDirty = false;
+      FZ.toast("تم حفظ الإعدادات ✅", "success");
+    } catch (err) {
+      FZ.toast(err.message && !String(err.message).includes("PERMISSION") ? err.message : FZ.authError(err), "error");
+    }
+  });
 
   // -------------------- تشغيل / إيقاف الصندوق --------------------
   function renderBoxControl() {
@@ -661,7 +756,7 @@
     $("kpResult").className = `keypad-result ${res.ok ? "ok" : "bad"}`;
     if (res.ok) {
       S.opened[res.compartment] = true; renderCompartments();
-      setTimeout(() => { S.opened[res.compartment] = false; renderCompartments(); }, 5000); // يُقفل تلقائياً
+      setTimeout(() => { S.opened[res.compartment] = false; renderCompartments(); }, (Number(FZ.settings.rules.openSeconds) || 10) * 1000); // يُقفل تلقائياً
     }
   }
 

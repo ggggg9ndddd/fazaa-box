@@ -4,10 +4,28 @@
 const FZ = (() => {
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
-  const PIN_TTL = 10 * MIN;        // أقصى عمر لطلب الفتح في قاعدة البيانات
-  const UNLOCK_TTL = 60 * 1000;    // الشريحة تنفّذ طلب الفتح فقط إذا كان عمره أقل من دقيقة
+  const UNLOCK_TTL = 60 * 1000;
   const BOX_TIMEOUT = 90 * 1000;   // يُعتبر الصندوق غير متصل إذا لم يرسل نبضة خلال 90 ثانية (النبضة كل 30 ثانية)
-  const GRACE = 0;                 // لا يوجد وقت سماح: رسوم التأخير تبدأ مباشرة بعد انتهاء المدة
+
+  // ---- الإعدادات: تُعدَّل من لوحة المسؤول (settings في قاعدة البيانات) ----
+  const DEFAULT_SETTINGS = {
+    payment: { accounts: (typeof PAYMENT_INFO !== "undefined" && PAYMENT_INFO.accounts) || [] },
+    contactWhatsapp: typeof CONTACT_WHATSAPP !== "undefined" ? CONTACT_WHATSAPP : "",
+    rules: { graceMinutes: 0, pinMinutes: 10, returnOnlyAfterDue: true, openSeconds: 10 },
+    texts: { title: "صندوق فزعة", tagline: "فزعتك وقت الزنقة!", announcement: "" }
+  };
+  const settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  const settingsListeners = [];
+  function applySettings(v) {
+    v = v || {};
+    const d = DEFAULT_SETTINGS;
+    settings.payment = { accounts: (v.payment && Array.isArray(v.payment.accounts) ? v.payment.accounts : (v.payment && v.payment.accounts ? Object.values(v.payment.accounts) : d.payment.accounts)).filter(a => a && a.value) };
+    settings.contactWhatsapp = v.contactWhatsapp != null ? String(v.contactWhatsapp) : d.contactWhatsapp;
+    settings.rules = Object.assign({}, d.rules, v.rules || {});
+    settings.texts = Object.assign({}, d.texts, v.texts || {});
+    settingsListeners.forEach(fn => fn(settings));
+  }
+  function onSettings(fn) { settingsListeners.push(fn); fn(settings); }
 
   const ready = !!(typeof firebaseConfig !== "undefined" && firebaseConfig.apiKey && firebaseConfig.databaseURL);
   let auth = null, db = null;
@@ -21,6 +39,7 @@ const FZ = (() => {
     }
   }
   const TS = firebase.database.ServerValue.TIMESTAMP;
+  if (db) db.ref("settings").on("value", s => applySettings(s.val()), () => {});
 
   // ---- وقت الخادم (لا نعتمد على ساعة جهاز المستخدم) ----
   let offset = 0;
@@ -94,7 +113,7 @@ const FZ = (() => {
     withDue(rental);
     if (!rental || !rental.dueAt) return 0;
     const over = at - rental.dueAt;
-    if (over <= GRACE) return 0;
+    if (over <= settings.rules.graceMinutes * MIN) return 0;
     return Math.ceil(over / HOUR) * ((tool && tool.lateFeePerHour) || 0);
   }
 
@@ -172,6 +191,10 @@ const FZ = (() => {
     ready, auth, db, TS, now, box, watchBox, renderBoxPill,
     money, esc, fmtTime, fmtCountdown, planLabel, lateFeeFor, withDue,
     STATUS, TOOL_STATUS, badge, authError, toast, startCountdowns, withBusy,
-    MIN, HOUR, PIN_TTL, UNLOCK_TTL, BOX_TIMEOUT, GRACE
+    MIN, HOUR, UNLOCK_TTL, BOX_TIMEOUT,
+    settings, onSettings, DEFAULT_SETTINGS,
+    get PIN_TTL() { return Math.max(1, Number(settings.rules.pinMinutes) || 10) * MIN; },
+    get GRACE() { return Math.max(0, Number(settings.rules.graceMinutes) || 0) * MIN; },
+    get RETURN_AFTER_DUE() { return settings.rules.returnOnlyAfterDue !== false; }
   };
 })();

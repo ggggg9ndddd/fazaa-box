@@ -147,10 +147,52 @@
                 <div class="table-wrap"><table class="users-table">
                     <thead><tr>
                         <th>الاسم</th><th>الرقم الجامعي</th><th>الهاتف</th><th>الإيميل</th>
-                        <th>تاريخ التسجيل</th><th>عدد الحجوزات</th><th>الحالة</th><th>رسوم مستحقة</th>
+                        <th>تاريخ التسجيل</th><th>عدد الحجوزات</th><th>الحالة</th><th>رسوم مستحقة</th><th>إجراءات</th>
                     </tr></thead>
                     <tbody id="usersBody"></tbody>
                 </table></div>
+            </section>
+
+            <section class="admin-section settings-section">
+                <h2 class="section-title">⚙️ الإعدادات</h2>
+                <p class="hint text-start">أي تعديل هنا يطبّق مباشرة على الموقع والصندوق بعد الضغط على «حفظ الإعدادات».</p>
+                <form id="settingsForm">
+                    <div class="settings-block">
+                        <h3>أرقام التحويل والتواصل</h3>
+                        <div id="acctRows"></div>
+                        <button type="button" class="btn btn-sm btn-ghost" data-action="acctAdd">➕ إضافة حساب تحويل</button>
+                        <div class="form-group mt-12">
+                            <label for="setWhatsapp">رقم واتساب فزعة (8 أرقام، يستقبل بيانات الحجوزات والاستفسارات)</label>
+                            <input id="setWhatsapp" class="form-control" inputmode="numeric" dir="ltr" maxlength="8">
+                        </div>
+                    </div>
+                    <div class="settings-block">
+                        <h3>الصندوق والرموز والغرامة</h3>
+                        <div class="settings-grid">
+                            <div class="form-group"><label for="setOpen">مدة بقاء القسم مفتوح (ثواني)</label>
+                                <input id="setOpen" type="number" min="3" max="120" class="form-control"></div>
+                            <div class="form-group"><label for="setPin">صلاحية الرمز (دقائق)</label>
+                                <input id="setPin" type="number" min="1" max="30" class="form-control"></div>
+                            <div class="form-group"><label for="setGrace">وقت سماح قبل الغرامة (دقائق، 0 = بدون)</label>
+                                <input id="setGrace" type="number" min="0" max="1440" class="form-control"></div>
+                            <div class="form-group"><label>&nbsp;</label>
+                                <label class="switch-row"><input type="checkbox" id="setReturnAfter"> <span>الإرجاع متاح فقط بعد انتهاء المدة</span></label></div>
+                        </div>
+                        <p class="hint text-start">سعر الغرامة لكل ساعة يتعدّل من كل أداة في قسم «الأدوات».</p>
+                    </div>
+                    <div class="settings-block">
+                        <h3>نصوص الموقع</h3>
+                        <div class="settings-grid">
+                            <div class="form-group"><label for="setTitle">اسم الموقع</label>
+                                <input id="setTitle" class="form-control" maxlength="40"></div>
+                            <div class="form-group"><label for="setTagline">العبارة تحت الاسم</label>
+                                <input id="setTagline" class="form-control" maxlength="60"></div>
+                            <div class="form-group full"><label for="setAnnounce">إعلان يظهر للطلاب أعلى الصفحة (اتركه فاضي لإخفائه)</label>
+                                <textarea id="setAnnounce" class="form-control" rows="2" maxlength="300"></textarea></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-accent btn-block" type="submit">💾 حفظ الإعدادات</button>
+                </form>
             </section>
         </div>
     </div>

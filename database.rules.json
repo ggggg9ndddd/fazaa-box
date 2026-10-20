@@ -15,6 +15,18 @@
       "$uid": { ".read": "auth != null && auth.uid === $uid" }
     },
 
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "contactWhatsapp": { ".validate": "newData.isString() && (newData.val() === '' || newData.val().matches(/^[0-9]{8}$/))" },
+      "rules": {
+        "openSeconds": { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 120" },
+        "pinMinutes": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 30" },
+        "graceMinutes": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440" },
+        "returnOnlyAfterDue": { ".validate": "newData.isBoolean()" }
+      }
+    },
+
     "box": {
       ".read": true,
       ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)"
@@ -65,6 +77,7 @@
             }
           },
           "lateFeeDue": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "blocked": { ".validate": "newData.isBoolean()" },
           "$other": { ".validate": false }
         }
       }
@@ -77,7 +90,7 @@
       "$rid": {
         ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
 
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'pending' && newData.child('createdAt').val() === now && root.child('users').child(auth.uid).child('profile').exists() && !root.child('users').child(auth.uid).child('state').child('activeByTool').child(newData.child('toolId').val()).exists() && (!root.child('users').child(auth.uid).child('state').child('lateFeeDue').exists() || root.child('users').child(auth.uid).child('state').child('lateFeeDue').val() === 0) && root.child('tools').child(newData.child('toolId').val()).child('status').val() === 'available' && newData.child('toolName').val() === root.child('tools').child(newData.child('toolId').val()).child('name').val() && newData.child('compartment').val() === root.child('tools').child(newData.child('toolId').val()).child('compartment').val() && newData.child('hours').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('hours').val() && newData.child('amount').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('amount').val() && newData.parent().parent().child('users').child(auth.uid).child('state').child('activeByTool').child(newData.child('toolId').val()).val() === $rid && !newData.hasChild('paidAt') && !newData.hasChild('startAt') && !newData.hasChild('dueAt') && !newData.hasChild('returnedAt') && !newData.hasChild('lateFee') && !newData.hasChild('currentPin') && !newData.hasChild('paymentClaimedAt')))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('status').val() === 'pending' && newData.child('createdAt').val() === now && root.child('users').child(auth.uid).child('profile').exists() && root.child('users').child(auth.uid).child('state').child('blocked').val() !== true && !root.child('users').child(auth.uid).child('state').child('activeByTool').child(newData.child('toolId').val()).exists() && (!root.child('users').child(auth.uid).child('state').child('lateFeeDue').exists() || root.child('users').child(auth.uid).child('state').child('lateFeeDue').val() === 0) && root.child('tools').child(newData.child('toolId').val()).child('status').val() === 'available' && newData.child('toolName').val() === root.child('tools').child(newData.child('toolId').val()).child('name').val() && newData.child('compartment').val() === root.child('tools').child(newData.child('toolId').val()).child('compartment').val() && newData.child('hours').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('hours').val() && newData.child('amount').val() === root.child('tools').child(newData.child('toolId').val()).child('plans').child(newData.child('plan').val()).child('amount').val() && newData.parent().parent().child('users').child(auth.uid).child('state').child('activeByTool').child(newData.child('toolId').val()).val() === $rid && !newData.hasChild('paidAt') && !newData.hasChild('startAt') && !newData.hasChild('dueAt') && !newData.hasChild('returnedAt') && !newData.hasChild('lateFee') && !newData.hasChild('currentPin') && !newData.hasChild('paymentClaimedAt')))",
 
         ".validate": "newData.hasChildren(['uid', 'toolId', 'toolName', 'compartment', 'plan', 'hours', 'amount', 'ref', 'status', 'createdAt'])",
 
@@ -110,6 +123,7 @@
         "approvedBy": { ".validate": "newData.isString()" },
         "startAt": { ".validate": "newData.isNumber()" },
         "dueAt": { ".validate": "newData.isNumber()" },
+        "extendedBy": { ".validate": "newData.isString()" },
         "returnedAt": { ".validate": "newData.isNumber()" },
         "returnConfirmedAt": {
           ".write": "auth != null && data.parent().child('uid').val() === auth.uid && data.parent().child('status').val() === 'returning' && newData.val() === now",
@@ -128,7 +142,7 @@
       "$pin": {
         ".read": "auth != null && data.child('uid').val() === auth.uid",
 
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || ($pin.matches(/^[0-9]{6}$/) && (!data.exists() || data.child('used').val() === true || data.child('createdAt').val() < now - 600000) && newData.child('uid').val() === auth.uid && newData.child('used').val() === false && newData.child('createdAt').val() === now && root.child('rentals').child(newData.child('rentalId').val()).child('uid').val() === auth.uid && newData.child('compartment').val() === root.child('rentals').child(newData.child('rentalId').val()).child('compartment').val() && ((newData.child('type').val() === 'pickup' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'paid') || (newData.child('type').val() === 'return' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'active' && root.child('rentals').child(newData.child('rentalId').val()).child('startAt').val() + root.child('rentals').child(newData.child('rentalId').val()).child('hours').val() * 3600000 <= now)) && root.child('box').child('lastSeen').isNumber() && root.child('box').child('lastSeen').val() > now - 90000 && root.child('box').child('enabled').val() !== false && newData.parent().parent().child('rentals').child(newData.child('rentalId').val()).child('currentPin').val() === $pin))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true || ($pin.matches(/^[0-9]{6}$/) && (!data.exists() || data.child('used').val() === true || data.child('createdAt').val() < now - 1800000) && newData.child('uid').val() === auth.uid && newData.child('used').val() === false && newData.child('createdAt').val() === now && root.child('rentals').child(newData.child('rentalId').val()).child('uid').val() === auth.uid && newData.child('compartment').val() === root.child('rentals').child(newData.child('rentalId').val()).child('compartment').val() && ((newData.child('type').val() === 'pickup' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'paid') || (newData.child('type').val() === 'return' && root.child('rentals').child(newData.child('rentalId').val()).child('status').val() === 'active' && (root.child('settings').child('rules').child('returnOnlyAfterDue').val() === false || (root.child('rentals').child(newData.child('rentalId').val()).child('dueAt').exists() && root.child('rentals').child(newData.child('rentalId').val()).child('dueAt').val() <= now) || (!root.child('rentals').child(newData.child('rentalId').val()).child('dueAt').exists() && root.child('rentals').child(newData.child('rentalId').val()).child('startAt').val() + root.child('rentals').child(newData.child('rentalId').val()).child('hours').val() * 3600000 <= now)))) && root.child('box').child('lastSeen').isNumber() && root.child('box').child('lastSeen').val() > now - 90000 && root.child('box').child('enabled').val() !== false && newData.parent().parent().child('rentals').child(newData.child('rentalId').val()).child('currentPin').val() === $pin))",
 
         ".validate": "newData.hasChildren(['uid', 'rentalId', 'compartment', 'type', 'createdAt', 'used'])",
         "uid": { ".validate": "newData.isString()" },

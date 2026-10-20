@@ -311,7 +311,7 @@ function notifyRentals_(rentals, users) {
       if (!r.remindSent && due > now && due - now <= HOUR) {
         sendMail_(p.email, '⏰ تذكير: موعد إرجاع ' + r.toolName + ' بعد أقل من ساعة',
           mailHtml_('موعد الإرجاع قرّب ⏰', [['الأداة', r.toolName], ['موعد الإرجاع', fmt_(due)]],
-            'أرجع الأداة قبل الموعد. رسوم التأخير تبدأ مباشرة بعد انتهاء المدة.', 'فتح الموقع', SITE_URL));
+            'أرجع الأداة قبل الموعد، بعد انتهاء المدة تُحسب رسوم تأخير.', 'فتح الموقع', SITE_URL));
         upd['rentals/' + rid + '/remindSent'] = true;
       }
       if (!r.overdueSent && now > due) {
