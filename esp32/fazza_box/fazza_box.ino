@@ -4,11 +4,11 @@
  *
  *  كيف يشتغل:
  *   - كل 30 ثانية يكتب box/lastSeen  ← الموقع يعرض «الصندوق متصل»
- *   - الطالب يطلب رمز (6 أرقام) من الموقع ويكتبه في لوحة الأرقام ثم #
- *   - الصندوق يتحقق من الرمز في Firebase، يفتح القسم، ويحدّث الحجز:
- *       استلام  ← status = active (يبدأ وقت الإيجار)
- *       إرجاع   ← status = returning + رسوم التأخير (تبدأ مباشرة بعد انتهاء المدة)
- *                  ثم الطالب يضغط «تم الإرجاع» في الموقع
+ *   - كل أداة لها رمز ثابت (يتحدد من لوحة المسؤول ← الأدوات، ويُقرأ من toolCodes)
+ *   - بعد موافقة المسؤول على الإيصال يظهر الرمز للطالب، فيكتبه في لوحة الأرقام ثم #
+ *   - الصندوق يلقى الأداة صاحبة الرمز ← حجزها الحالي (tools/<id>/currentRental):
+ *       الحجز مدفوع  ← يفتح القسم ويبدأ وقت الإيجار (status = active)
+ *       الحجز نشط    ← يفتح القسم ويسجّل الإرجاع + رسوم التأخير (status = returned)
  *   - *  = مسح الإدخال
  *
  *  المكتبات (Library Manager):  ArduinoJson (7.x) + ESP32Servo + Keypad (Mark Stanley)
@@ -54,7 +54,6 @@ const unsigned long HEARTBEAT_MS = 30000;
 const unsigned long RELOGIN_MS   = 50UL * 60UL * 1000UL;  // التوكن يعيش ساعة
 const long long HOUR_MS          = 3600000LL;
 // هذي القيم تتحدّث كل دقيقة من لوحة المسؤول (settings/rules)
-long long PIN_TTL_MS   = 10LL * 60LL * 1000LL;   // صلاحية الرمز
 long long GRACE_MS     = 0;                      // وقت سماح قبل الغرامة
 bool RETURN_AFTER_DUE  = true;                   // الإرجاع فقط بعد انتهاء المدة
 unsigned long lastSettings = 0;
@@ -154,69 +153,60 @@ void relockTick() {
 }
 
 // ---------------------------------------------------------------
-bool processCode(const String& id, long long now) {
+bool processCode(const String& code, long long now) {
   String resp;
-  if (db("GET", "/pins/" + id, "", resp) != 200) return false;
-  JsonDocument pd;
-  if (deserializeJson(pd, resp) || pd.isNull()) { Serial.println("[PIN] wrong code"); return false; }
-  JsonObject p = pd.as<JsonObject>();
-  if (p["used"] | false) { Serial.println("[PIN] code already used"); return false; }
-  long long created = p["createdAt"] | 0LL;
-  if (!created || now - created > PIN_TTL_MS) { Serial.println("[PIN] code expired"); return false; }
+  // 1) أي أداة لها هذا الرمز؟
+  if (db("GET", "/toolCodes", "", resp) != 200) return false;
+  JsonDocument codes;
+  if (deserializeJson(codes, resp) || !codes.is<JsonObject>()) return false;
+  String toolId = "";
+  for (JsonPair kv : codes.as<JsonObject>()) {
+    if (String(kv.value().as<const char*>()) == code) { toolId = kv.key().c_str(); break; }
+  }
+  if (toolId.isEmpty()) { Serial.println("[PIN] wrong code"); return false; }
 
-  String rid  = p["rentalId"] | "";
-  String type = p["type"] | "";
-  int comp    = p["compartment"] | 0;
-  if (rid.isEmpty() || comp < 1 || comp > 2) return false;
+  // 2) الأداة وحجزها الحالي
+  if (db("GET", "/tools/" + toolId, "", resp) != 200) return false;
+  JsonDocument tool;
+  if (deserializeJson(tool, resp) || tool.isNull()) return false;
+  int comp = tool["compartment"] | 0;
+  int perHour = tool["lateFeePerHour"] | 0;
+  String rid = tool["currentRental"] | "";
+  if (comp < 1 || comp > 2) { Serial.println("[PIN] tool has no valid compartment"); return false; }
+  if (rid.isEmpty()) { Serial.println("[PIN] no approved booking for this tool"); return false; }
 
   if (db("GET", "/rentals/" + rid, "", resp) != 200) return false;
   JsonDocument r;
   if (deserializeJson(r, resp) || r.isNull()) return false;
-
-  if (String(r["currentPin"] | "") != id) { Serial.println("[PIN] old code"); return false; }
-  if ((int)(r["compartment"] | 0) != comp) return false;
-
   String status = r["status"] | "";
-  bool pickup = (type == "pickup" && status == "paid");
-  bool ret    = (type == "return" && status == "active");
-  if (!pickup && !ret) { Serial.println("[PIN] rental state does not allow"); return false; }
+  String uid    = r["uid"] | "";
+  bool pickup = (status == "paid");
+  bool ret    = (status == "active");
+  if (!pickup && !ret) { Serial.println("[PIN] booking state does not allow"); return false; }
 
   long long start = r["startAt"] | 0LL;
   long long due   = r["dueAt"] | 0LL;
   if (!due && start) due = start + (long long)(r["hours"] | 0) * HOUR_MS;
   if (ret && RETURN_AFTER_DUE && now < due) { Serial.println("[PIN] return before time ends"); return false; }
 
-  // 1) علّم الرمز مستخدم قبل الفتح (ما ينفتح مرتين)
-  if (db("PATCH", "/pins/" + id, "{\"used\":true,\"usedAt\":{\".sv\":\"timestamp\"}}", resp) != 200) {
-    Serial.println("[PIN] could not consume code — NOT opening");
-    return false;
-  }
-
-  // 2) افتح القفل
-  openCompartment(comp);
-
-  String toolId = r["toolId"] | "";
-  String uid    = r["uid"] | "";
   JsonDocument upd;
-
   if (pickup) {
     upd["rentals/" + rid + "/status"] = "active";
     upd["rentals/" + rid + "/startAt"][".sv"] = "timestamp";
     upd["tools/" + toolId + "/status"] = "rented";
-    Serial.printf("[RENT] pickup %s\n", rid.c_str());
   } else {
     int fee = 0;
-    if (due && now > due + GRACE_MS) {            // رسوم التأخير بعد وقت السماح (من الإعدادات)
-      int perHour = 0;
-      if (db("GET", "/tools/" + toolId + "/lateFeePerHour", "", resp) == 200) perHour = resp.toInt();
+    if (due && now > due + GRACE_MS) {
       long long over = now - due;
       fee = (int)((over + HOUR_MS - 1) / HOUR_MS) * perHour;
     }
-    // الطالب يحط الأداة ويضغط «تم الإرجاع» في الموقع ← تصير الأداة متاحة
-    upd["rentals/" + rid + "/status"] = "returning";
+    upd["rentals/" + rid + "/status"] = "returned";
     upd["rentals/" + rid + "/returnedAt"][".sv"] = "timestamp";
     upd["rentals/" + rid + "/lateFee"] = fee;
     if (fee > 0) upd["rentals/" + rid + "/lateFeePaid"] = false;
+    upd["tools/" + toolId + "/status"] = "available";
+    upd["tools/" + toolId + "/currentRental"] = nullptr;
+    upd["users/" + uid + "/state/activeByTool/" + toolId] = nullptr;
     if (fee > 0) {
       int current = 0;
       if (db("GET", "/users/" + uid + "/state/lateFeeDue", "", resp) == 200) current = resp.toInt();
@@ -225,9 +215,12 @@ bool processCode(const String& id, long long now) {
     Serial.printf("[RENT] return %s — late fee %d baisa\n", rid.c_str(), fee);
   }
 
+  // 3) سجّل في قاعدة البيانات أولاً — إذا فشل الحفظ ما ينفتح القفل
   String body;
   serializeJson(upd, body);
-  db("PATCH", "", body, resp);   // تحديث كل المسارات مرة وحدة
+  if (db("PATCH", "", body, resp) != 200) { Serial.println("[PIN] could not save — NOT opening"); return false; }
+  openCompartment(comp);
+  Serial.printf("[RENT] %s %s (compartment %d)\n", pickup ? "pickup" : "return", rid.c_str(), comp);
   return true;
 }
 
@@ -237,11 +230,10 @@ void loadSettings() {
   JsonDocument d;
   if (deserializeJson(d, resp) || d.isNull()) return;
   OPEN_TIME        = (unsigned long)(d["openSeconds"] | 10) * 1000UL;
-  PIN_TTL_MS       = (long long)(d["pinMinutes"] | 10) * 60000LL;
   GRACE_MS         = (long long)(d["graceMinutes"] | 0) * 60000LL;
   RETURN_AFTER_DUE = d["returnOnlyAfterDue"] | true;
-  Serial.printf("[SET] open %lus, code %lld min, grace %lld min, returnAfterDue %d\n",
-                OPEN_TIME / 1000, PIN_TTL_MS / 60000, GRACE_MS / 60000, RETURN_AFTER_DUE);
+  Serial.printf("[SET] open %lus, grace %lld min, returnAfterDue %d\n",
+                OPEN_TIME / 1000, GRACE_MS / 60000, RETURN_AFTER_DUE);
 }
 
 void blinkError() {
@@ -256,7 +248,7 @@ void handleKeypad() {
     Serial.println();
     String code = entered;
     entered = "";
-    if (code.length() != 6) { Serial.println("[KEY] enter 6 digits then #"); blinkError(); return; }
+    if (code.length() < 4 || code.length() > 8) { Serial.println("[KEY] enter the code (4-8 digits) then #"); blinkError(); return; }
     long long now = nowMs();
     if (!now || WiFi.status() != WL_CONNECTED) { Serial.println("[KEY] offline — denied"); blinkError(); return; }
     String en;
@@ -267,7 +259,7 @@ void handleKeypad() {
     if (!processCode(code, now)) { Serial.println("[KEY] ACCESS DENIED"); blinkError(); }
     return;
   }
-  if (key >= '0' && key <= '9' && entered.length() < 6) { entered += key; Serial.print("*"); }
+  if (key >= '0' && key <= '9' && entered.length() < 8) { entered += key; Serial.print("*"); }
 }
 
 // ---------------------------------------------------------------
@@ -283,7 +275,7 @@ void setup() {
 
   connectWiFi();
   if (WiFi.status() == WL_CONNECTED) { syncTime(); firebaseLogin(); }
-  Serial.println("=== FAZZA BOX READY — enter 6-digit code then # ===");
+  Serial.println("=== FAZZA BOX READY — enter the tool code then # ===");
 }
 
 void loop() {

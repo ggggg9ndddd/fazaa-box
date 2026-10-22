@@ -196,6 +196,7 @@
       const a = S.active[rid];
       if (a.rentalRef) a.rentalRef.off();
       if (a.pinRef) a.pinRef.off();
+      if (a.codeRef) a.codeRef.off();
       delete S.active[rid];
     });
     ids.forEach(rid => {
@@ -205,10 +206,23 @@
         const prev = a.r;
         a.r = FZ.withDue(s.val());
         if (prev && a.r && prev.status !== a.r.status) announceStatus(a.r.status, a.r.toolName);
-        attachPin(rid, a.r && a.r.currentPin);
+        attachCode(rid);
         renderAll();
       }, () => {});
     });
+  }
+
+  // رمز الصندوق الثابت للأداة — يظهر للطالب فقط بعد موافقة المسؤول
+  function attachCode(rid) {
+    const a = S.active[rid];
+    if (!a || !a.r) return;
+    const want = ["paid", "active"].includes(a.r.status) ? a.r.toolId : null;
+    if (want === (a.codeTool || null)) return;
+    if (a.codeRef) a.codeRef.off();
+    a.codeRef = null; a.codeTool = want; a.boxCode = null;
+    if (!want) return;
+    a.codeRef = FZ.db.ref(`toolCodes/${want}`);
+    a.codeRef.on("value", s => { a.boxCode = s.val(); renderRental(); }, () => { a.boxCode = null; renderRental(); });
   }
 
   function attachPin(rid, code) {
@@ -223,7 +237,7 @@
 
   function announceStatus(status, toolName) {
     const msgs = {
-      paid: "وافق المسؤول على حجزك ✅ توجّه للصندوق واطلب رمز الاستلام",
+      paid: "وافق المسؤول على حجزك ✅ رمز الصندوق ظاهر لك الآن",
       active: "تم فتح القسم — استلم أداتك. لا تنسَ موعد الإرجاع ⏰",
       returning: "فُتح القسم — ضع الأداة ثم اضغط «تم الإرجاع»",
       returned: "تم إرجاع الأداة بنجاح، شكراً لك 🌟",
@@ -273,23 +287,18 @@
   }
 
   function openBlock(a, type, compartment) {
-    const st = pinState(a, type);
-    if (st === "valid") {
-      const exp = a.pin.createdAt + FZ.PIN_TTL;
-      return `<div class="pin-container">
-          <div class="pin-label">${type === "pickup" ? "رمز الاستلام" : "رمز الإرجاع"} — القسم رقم ${compartment}</div>
-          <div class="pin-code" dir="ltr">${esc(a.pinCode)}</div>
-          <div class="pin-help">اكتب الرمز في لوحة أرقام الصندوق ثم اضغط <b>#</b></div>
-          <div class="pin-exp">ينتهي بعد <b data-to="${exp}">${FZ.fmtCountdown(exp - FZ.now())}</b></div>
-        </div>`;
-    }
-    const note = st === "expired" ? `<p class="hint warn">انتهت صلاحية الرمز السابق. اطلب رمزاً جديداً.</p>` : "";
-    const label = type === "pickup" ? "احصل على رمز الاستلام" : "احصل على رمز الإرجاع";
-    return `${note}
-      <button class="btn btn-accent btn-block btn-open" data-action="open" data-rid="${a.rid}" data-type="${type}" ${FZ.box.online ? "" : "disabled"}>🔑 ${label}</button>
-      ${FZ.box.online
-        ? `<p class="hint">الرمز صالح ${FZ.settings.rules.pinMinutes} دقائق ولمرة واحدة. اطلبه وأنت قريب من الصندوق.</p>`
-        : `<p class="hint warn">${FZ.box.enabled ? "الصندوق غير متصل حالياً، لا يمكن فتحه." : "الصندوق متوقف مؤقتاً، لا يمكن فتحه."}</p>`}`;
+    const code = a.boxCode;
+    const offline = !FZ.box.online
+      ? `<p class="hint warn">${FZ.box.enabled ? "الصندوق غير متصل حالياً، انتظر لين يرجع الاتصال." : "الصندوق متوقف مؤقتاً، لا يمكن فتحه الآن."}</p>` : "";
+    if (!code) return `<div class="banner banner-warn">رمز الصندوق لهذه الأداة غير جاهز بعد — تواصل مع فريق فزعة.</div>`;
+    return `<div class="pin-container">
+        <div class="pin-label">رمز الصندوق — القسم رقم ${compartment}</div>
+        <div class="pin-code" dir="ltr">${esc(code)}</div>
+        <div class="pin-help">اكتب الرمز في لوحة أرقام الصندوق ثم اضغط <b>#</b></div>
+        <div class="pin-exp">${type === "pickup"
+          ? "يبدأ وقت الإيجار لحظة إدخال الرمز وفتح القسم."
+          : "ضع الأداة داخل القسم وأغلق الباب — يتسجّل الإرجاع تلقائياً."}</div>
+      </div>${offline}`;
   }
 
   // رفع إيصال التحويل (يُحفظ في Google Drive ويؤكد الحجز تلقائياً)
@@ -438,9 +447,9 @@
             لن تتمكن من الاستئجار مجدداً حتى تسويتها.</div>`;
       }
       const returnSection = `<h3 class="sub-title">إرجاع الأداة</h3>` + (FZ.RETURN_AFTER_DUE && t < r.dueAt
-        ? `<p class="hint">زر الإرجاع يتفعّل بعد انتهاء مدة الاستئجار، وبعدها تفتح <b>القسم رقم ${r.compartment}</b> وتضع الأداة داخله.</p>
-        <button class="btn btn-primary btn-block btn-lg" disabled>🔒 يتفعّل بعد <span data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</span></button>`
-        : `<p class="hint">اطلب رمز الإرجاع، اكتبه في لوحة أرقام الصندوق لفتح <b>القسم رقم ${r.compartment}</b>، ضع الأداة داخله، ثم اضغط «تم الإرجاع».</p>
+        ? `<p class="hint">الإرجاع يتفعّل بعد انتهاء مدة الاستئجار، وبعدها تكتب نفس الرمز في الصندوق لفتح <b>القسم رقم ${r.compartment}</b> وتضع الأداة داخله.</p>
+        <button class="btn btn-primary btn-block btn-lg" disabled>🔒 الإرجاع يتفعّل بعد <span data-to="${r.dueAt}">${FZ.fmtCountdown(r.dueAt - t)}</span></button>`
+        : `<p class="hint">اكتب نفس الرمز في لوحة أرقام الصندوق لفتح <b>القسم رقم ${r.compartment}</b> وإرجاع الأداة.</p>
         ${openBlock(a, "return", r.compartment)}`);
       body = `${due}
         ${returnSection}
@@ -514,7 +523,7 @@
       <ul class="rules-list">
         <li>تقدر تحجز أكثر من أداة، وكل أداة لها حجز ودفع وإرجاع مستقل.</li>
         <li>بعد الدفع ارفع الإيصال، ويؤكد المسؤول حجزك.</li>
-        <li>الاستلام والإرجاع برمز تكتبه في لوحة أرقام الصندوق. الرمز صالح ${FZ.settings.rules.pinMinutes} دقائق ولمرة واحدة.</li>
+        <li>بعد موافقة المسؤول يظهر لك رمز الصندوق. تكتبه في لوحة الأرقام للاستلام، ونفس الرمز للإرجاع.</li>
         <li>${FZ.GRACE ? `بعد انتهاء المدة لديك ${FZ.settings.rules.graceMinutes} دقيقة، بعدها تبدأ` : "تبدأ"} رسوم التأخير (${money(t.lateFeePerHour)} لكل ساعة)، ويُمنع الاستئجار حتى تسويتها.</li>
       </ul>
       <button class="btn btn-block mt-20" data-action="book">تأكيد الطلب والانتقال للدفع</button>`;

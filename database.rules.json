@@ -27,6 +27,15 @@
       }
     },
 
+    "toolCodes": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)",
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+      "$toolId": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).exists() && (root.child('rentals').child(root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).val()).child('status').val() === 'paid' || root.child('rentals').child(root.child('users').child(auth.uid).child('state').child('activeByTool').child($toolId).val()).child('status').val() === 'active')",
+        ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4,8}$/)"
+      }
+    },
+
     "box": {
       ".read": true,
       ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('devices').child(auth.uid).val() === true)"

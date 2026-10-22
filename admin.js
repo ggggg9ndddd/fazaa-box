@@ -75,7 +75,7 @@
     listen("users", FZ.db.ref("users"), v => S.users = v);
     listen("tools", FZ.db.ref("tools"), v => S.tools = v);
     listen("admins", FZ.db.ref("admins"), v => S.admins = v);
-    listen("pins", FZ.db.ref("pins").orderByChild("createdAt").limitToLast(30), v => S.pins = v);
+    listen("toolCodes", FZ.db.ref("toolCodes"), v => S.codes = v);
   });
 
   function listen(name, ref, set) {
@@ -248,6 +248,10 @@
           <label>رقم القسم / المكان</label>
           <input class="form-control" type="number" min="1" step="1" name="compartment" value="${t.compartment || nextCompartment()}" required>
         </div>
+        <div class="form-group">
+          <label>رمز الصندوق لهذه الأداة (4 إلى 8 أرقام — نفس الرمز المبرمج في الصندوق)</label>
+          <input class="form-control" name="boxCode" inputmode="numeric" dir="ltr" pattern="[0-9]{4,8}" value="${esc((S.codes || {})[id] || "")}" required>
+        </div>
         <p class="muted small">المبالغ بالبيسة (1000 بيسة = 1 ريال)</p>
         <div class="price-grid">
           ${PLAN_KEYS.map(([k, h]) => `<label>${FZ.planLabel(h)}
@@ -286,7 +290,7 @@
           ? `<button class="btn btn-sm" data-action="toolStatus" data-id="${id}" data-status="available">إتاحة</button>` : "";
       return `<div class="admin-card">
           <div class="admin-card-top"><b>${esc(t.name)}</b>${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
-          <div class="small">القسم ${t.compartment} · رسوم التأخير ${money(t.lateFeePerHour)}/ساعة</div>
+          <div class="small">القسم ${t.compartment} · رسوم التأخير ${money(t.lateFeePerHour)}/ساعة · رمز الصندوق: <b dir="ltr">${esc((S.codes || {})[id] || "— غير محدد")}</b></div>
           <div class="muted small">${plans}</div>
           <div class="actions">
             <button class="btn btn-sm btn-accent" data-action="toolEdit" data-id="${id}">✏️ تعديل الاسم والأسعار</button>
@@ -420,7 +424,8 @@
             [`rentals/${id}/status`]: "paid",
             [`rentals/${id}/paidAt`]: FZ.TS,
             [`rentals/${id}/approvedBy`]: FZ.auth.currentUser.uid,
-            [`tools/${r.toolId}/status`]: "reserved"
+            [`tools/${r.toolId}/status`]: "reserved",
+            [`tools/${r.toolId}/currentRental`]: id
           });
           FZ.toast(`تمت الموافقة على ${r.ref}`, "success");
         } else if (a === "reject") {
@@ -507,7 +512,7 @@
           const t = S.tools[id];
           if (!t || !(t.status === "available" || t.status === "maintenance")) throw new Error("لا يمكن حذف أداة محجوزة أو مستأجرة");
           if (!confirm(`حذف «${t.name}» نهائياً؟ الحجوزات السابقة تبقى في السجل.`)) return;
-          await FZ.db.ref(`tools/${id}`).remove();
+          await FZ.db.ref().update({ [`tools/${id}`]: null, [`toolCodes/${id}`]: null });
           S.editingTool = null; renderTools(true);
           FZ.toast("تم حذف الأداة", "success");
         } else if (a === "toolEdit") {
@@ -536,7 +541,12 @@
     if (name.length < 2) return FZ.toast("اكتب اسم الأداة", "error");
     const compartment = parseInt(f.get("compartment"), 10);
     if (!(compartment >= 1)) return FZ.toast("اكتب رقم القسم", "error");
+    const boxCode = String(f.get("boxCode") || "").trim();
+    if (!/^[0-9]{4,8}$/.test(boxCode)) return FZ.toast("رمز الصندوق لازم من 4 إلى 8 أرقام", "error");
+    const dup = Object.entries(S.codes || {}).find(([k, c]) => k !== id && c === boxCode);
+    if (dup) return FZ.toast(`هذا الرمز مستخدم لأداة ثانية (${(S.tools[dup[0]] || {}).name || dup[0]})`, "error");
     const upd = {
+      [`toolCodes/${id}`]: boxCode,
       [`tools/${id}/name`]: name,
       [`tools/${id}/compartment`]: compartment,
       [`tools/${id}/lateFeePerHour`]: Math.max(0, parseInt(f.get("lateFeePerHour"), 10) || 0)
@@ -564,6 +574,7 @@
     const out = { [`users/${r.uid}/state/activeByTool/${r.toolId}`]: null };
     const st = (S.users[r.uid] && S.users[r.uid].state) || {};
     if (st.activeRental === rid) out[`users/${r.uid}/state/activeRental`] = null;
+    if ((S.tools[r.toolId] || {}).currentRental === rid) out[`tools/${r.toolId}/currentRental`] = null;
     return out;
   }
 
@@ -592,52 +603,35 @@
     return fee;
   }
 
+  // نفس اللي يسويه الصندوق: رمز ثابت لكل أداة ← الحجز الحالي للأداة ← استلام أو إرجاع
   async function processPin(code) {
-    if (!/^\d{6}$/.test(code)) return { ok: false, msg: "طلب غير صالح" };
+    if (!/^\d{4,8}$/.test(code)) return { ok: false, msg: "اكتب الرمز (4 إلى 8 أرقام)" };
     if (!FZ.box.enabled) return { ok: false, msg: "الصندوق متوقف من لوحة المسؤول — شغّله أولاً" };
-    if (!FZ.box.online) return { ok: false, msg: "الصندوق غير متصل — لا تُنفَّذ طلبات الفتح" };
-    const p = (await FZ.db.ref(`pins/${code}`).get()).val();
-    if (!p) return { ok: false, msg: "رمز غير صحيح" };
-    if (p.used) return { ok: false, msg: "الرمز مستخدم مسبقاً" };
+    if (!FZ.box.online) return { ok: false, msg: "الصندوق غير متصل — لا يُنفَّذ أي رمز" };
+    const codes = (await FZ.db.ref("toolCodes").get()).val() || {};
+    const toolId = Object.keys(codes).find(k => String(codes[k]) === code);
+    if (!toolId) return { ok: false, msg: "رمز غير صحيح" };
+    const tool = (await FZ.db.ref(`tools/${toolId}`).get()).val() || {};
+    const rid = tool.currentRental;
+    const r = rid ? FZ.withDue((await FZ.db.ref(`rentals/${rid}`).get()).val()) : null;
+    if (!r) return { ok: false, msg: "لا يوجد حجز مؤكد لهذه الأداة الآن" };
     const t = FZ.now();
-    if (t - p.createdAt > FZ.PIN_TTL) return { ok: false, msg: `انتهت صلاحية الرمز (${FZ.settings.rules.pinMinutes} دقائق)` };
-    const r = (await FZ.db.ref(`rentals/${p.rentalId}`).get()).val();
-    if (!r || r.currentPin !== code) return { ok: false, msg: "الرمز غير مرتبط بعملية صالحة" };
-    if (r.compartment !== p.compartment) return { ok: false, msg: "الرمز لا يخص هذا القسم" };
-    if (p.type === "pickup" && r.status !== "paid") return { ok: false, msg: "العملية ليست جاهزة للاستلام" };
-    if (p.type === "return" && r.status !== "active") return { ok: false, msg: "لا يوجد استئجار نشط لإرجاعه" };
-    if (p.type === "return" && FZ.RETURN_AFTER_DUE && t < (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR))) return { ok: false, msg: "الإرجاع متاح بعد انتهاء مدة الاستئجار فقط" };
-
-    // حجز الرمز ذرّياً حتى لا يُستخدم مرتين
-    const tx = await FZ.db.ref(`pins/${code}/used`).transaction(u => (u ? undefined : true));
-    if (!tx.committed) return { ok: false, msg: "الرمز مستخدم مسبقاً" };
-    await FZ.db.ref(`pins/${code}/usedAt`).set(FZ.TS);
-
-    if (p.type === "pickup") {
+    if (r.status === "paid") {
       await FZ.db.ref().update({
-        [`rentals/${p.rentalId}/status`]: "active",
-        [`rentals/${p.rentalId}/startAt`]: FZ.TS,
-        [`rentals/${p.rentalId}/dueAt`]: t + r.hours * FZ.HOUR,
-        [`tools/${r.toolId}/status`]: "rented"
+        [`rentals/${rid}/status`]: "active",
+        [`rentals/${rid}/startAt`]: FZ.TS,
+        [`rentals/${rid}/dueAt`]: t + r.hours * FZ.HOUR,
+        [`tools/${toolId}/status`]: "rented"
       });
-      return { ok: true, compartment: r.compartment, msg: `✅ فُتح القسم ${r.compartment} — استلم الأداة` };
+      return { ok: true, compartment: tool.compartment, msg: `✅ فُتح القسم ${tool.compartment} — بدأ وقت الإيجار` };
     }
-    // إرجاع: يفتح القسم ويسجّل وقت الإرجاع والرسوم — الطالب يضغط «تم الإرجاع» بعد ما يحط الأداة
-    const tool = (await FZ.db.ref(`tools/${r.toolId}`).get()).val();
-    const fee = FZ.lateFeeFor(r, tool, t);
-    const upd = {
-      [`rentals/${p.rentalId}/status`]: "returning",
-      [`rentals/${p.rentalId}/returnedAt`]: FZ.TS,
-      [`rentals/${p.rentalId}/lateFee`]: fee
-    };
-    if (fee > 0) {
-      upd[`rentals/${p.rentalId}/lateFeePaid`] = false;
-      upd[`users/${r.uid}/state/lateFeeDue`] = firebase.database.ServerValue.increment(fee);
-    }
-    await FZ.db.ref().update(upd);
-    return { ok: true, compartment: r.compartment,
-      msg: `✅ فُتح القسم ${r.compartment} للإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
+    if (r.status !== "active") return { ok: false, msg: "حالة الحجز لا تسمح بفتح الصندوق" };
+    if (FZ.RETURN_AFTER_DUE && t < r.dueAt) return { ok: false, msg: "الإرجاع متاح بعد انتهاء مدة الاستئجار فقط" };
+    const fee = await completeReturn(rid);
+    return { ok: true, compartment: tool.compartment,
+      msg: `✅ فُتح القسم ${tool.compartment} — تم الإرجاع${fee ? ` (رسوم تأخير ${money(fee)})` : ""}` };
   }
+
 
   // -------------------- الإعدادات --------------------
   let acctDraft = [], settingsDirty = false;
@@ -660,7 +654,6 @@
     renderAccts();
     $("setWhatsapp").value = st.contactWhatsapp || "";
     $("setOpen").value = st.rules.openSeconds;
-    $("setPin").value = st.rules.pinMinutes;
     $("setGrace").value = st.rules.graceMinutes;
     $("setReturnAfter").checked = st.rules.returnOnlyAfterDue !== false;
     $("setTitle").value = st.texts.title || "";
@@ -682,7 +675,7 @@
         payment: { accounts },
         contactWhatsapp: wa,
         rules: {
-          openSeconds: num("setOpen", 3, 120), pinMinutes: num("setPin", 1, 30),
+          openSeconds: num("setOpen", 3, 120), pinMinutes: Number(FZ.settings.rules.pinMinutes) || 10,
           graceMinutes: num("setGrace", 0, 1440), returnOnlyAfterDue: $("setReturnAfter").checked
         },
         texts: { title: $("setTitle").value.trim() || "صندوق فزعة", tagline: $("setTagline").value.trim(), announcement: $("setAnnounce").value.trim() },
@@ -725,32 +718,28 @@
 
   // -------------------- طلبات فتح الصندوق --------------------
   const handled = new Set();
-  function pendingUnlocks() {
-    const t = FZ.now();
-    return Object.entries(S.pins || {})
-      .filter(([, p]) => p && !p.used && t - p.createdAt <= FZ.PIN_TTL)
-      .map(([code, p]) => ({ code, ...p }))
-      .sort((a, b) => a.createdAt - b.createdAt);
-  }
-
+  // الأدوات اللي عليها حجز ينتظر الصندوق (استلام أو إرجاع)
   function renderUnlocks() {
     const el = $("unlockList");
     if (!el) return;
-    const list = pendingUnlocks();
-    el.innerHTML = list.length ? list.map(p => {
-      const r = S.rentals[p.rentalId] || {};
-      const prof = (S.users[p.uid] && S.users[p.uid].profile) || {};
+    const t = FZ.now();
+    const rows = Object.entries(S.tools || {}).map(([tid, tool]) => {
+      const r = tool.currentRental && S.rentals[tool.currentRental];
+      if (!r || !["paid", "active"].includes(r.status)) return "";
+      const prof = (S.users[r.uid] && S.users[r.uid].profile) || {};
+      const code = (S.codes || {})[tid] || "";
+      const what = r.status === "paid" ? "بانتظار الاستلام"
+        : (FZ.RETURN_AFTER_DUE && t < r.dueAt ? "مستأجرة — الإرجاع بعد انتهاء الوقت" : "جاهزة للإرجاع");
       return `<div class="unlock-item">
-          <div><b>${p.type === "pickup" ? "استلام" : "إرجاع"} — القسم ${p.compartment}</b>
-            <div class="small">${esc(prof.name || "")} · ${esc(r.toolName || "")}</div></div>
-          <button class="btn btn-sm btn-accent" data-action="runUnlock" data-code="${p.code}">تنفيذ</button>
+          <div><b>القسم ${tool.compartment} — ${what}</b>
+            <div class="small">${esc(prof.name || "")} · ${esc(tool.name || "")} · الرمز <b dir="ltr">${esc(code)}</b></div></div>
+          ${code ? `<button class="btn btn-sm btn-accent" data-action="runUnlock" data-code="${esc(code)}">إدخال الرمز</button>` : ""}
         </div>`;
-    }).join("") : `<div class="muted small unlock-empty">لا توجد طلبات فتح الآن.</div>`;
+    }).join("");
+    el.innerHTML = rows || `<div class="muted small unlock-empty">لا توجد أدوات بانتظار الصندوق الآن.</div>`;
   }
 
   async function runUnlock(code) {
-    if (handled.has(code)) return;
-    handled.add(code);
     const res = await processPin(code).catch(err => ({ ok: false, msg: "خطأ: " + FZ.authError(err) }));
     $("kpResult").textContent = res.msg;
     $("kpResult").className = `keypad-result ${res.ok ? "ok" : "bad"}`;
@@ -773,7 +762,6 @@
     e.preventDefault();
     const code = $("kpInput").value.trim();
     $("kpInput").value = "";
-    handled.delete(code);
     runUnlock(code);
   });
 

@@ -93,12 +93,12 @@
                 <div class="admin-col">
                     <section class="admin-section">
                         <h2 class="section-title">🔓 طلبات فتح الصندوق</h2>
-                        <p class="hint">لما يطلب الطالب رمز استلام أو إرجاع يظهر هنا. الطالب يكتب الرمز في لوحة أرقام الصندوق. قبل تركيب الصندوق: فعّل المحاكاة واكتب الرمز تحت (أو اضغط «تنفيذ»).</p>
+                        <p class="hint">كل أداة لها رمز ثابت (تحدده من قسم «الأدوات»). بعد موافقتك على الإيصال يظهر الرمز للطالب، ويكتبه في لوحة أرقام الصندوق للاستلام ثم للإرجاع. قبل تركيب الصندوق: فعّل المحاكاة واكتب الرمز تحت.</p>
                         <div id="boxControl"></div>
                         <div class="keypad-wrap">
                             <div id="unlockList" class="unlock-list"></div>
                             <form id="kpForm" class="add-admin">
-                                <input type="text" id="kpInput" class="form-control" inputmode="numeric" maxlength="6" placeholder="اكتب الرمز (6 أرقام)" dir="ltr">
+                                <input type="text" id="kpInput" class="form-control" inputmode="numeric" maxlength="8" placeholder="اكتب رمز الأداة" dir="ltr">
                                 <button class="btn btn-accent" type="submit">إدخال #</button>
                             </form>
                             <div class="keypad-result" id="kpResult"></div>
@@ -171,8 +171,6 @@
                         <div class="settings-grid">
                             <div class="form-group"><label for="setOpen">مدة بقاء القسم مفتوح (ثواني)</label>
                                 <input id="setOpen" type="number" min="3" max="120" class="form-control"></div>
-                            <div class="form-group"><label for="setPin">صلاحية الرمز (دقائق)</label>
-                                <input id="setPin" type="number" min="1" max="30" class="form-control"></div>
                             <div class="form-group"><label for="setGrace">وقت سماح قبل الغرامة (دقائق، 0 = بدون)</label>
                                 <input id="setGrace" type="number" min="0" max="1440" class="form-control"></div>
                             <div class="form-group"><label>&nbsp;</label>
