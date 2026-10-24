@@ -709,3 +709,8 @@ header .box-status { position: relative; }
 .wide .brand-logo-plate { padding: 6px 14px; border-radius: 14px; }
 .wide .brand-logo-plate img { width: 120px; }
 .wide .brand .brand-text { text-align: right; }
+
+/* الشعار بدون خلفية — مباشرة على الرأس */
+.brand-logo-plate, .wide .brand-logo-plate { background: none; box-shadow: none; padding: 0; border-radius: 0; }
+.brand-logo-plate img { width: 230px; filter: drop-shadow(0 0 10px rgba(120, 170, 255, .35)) drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.wide .brand-logo-plate img { width: 140px; }
