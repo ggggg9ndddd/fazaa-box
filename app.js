@@ -400,7 +400,11 @@
 
   function rentalCard(a) {
     const r = a.r;
-    const head = `<div class="rental-head"><h2 class="section-title">${esc(r.toolName)}</h2>${FZ.badge(FZ.STATUS, r.status)}</div>`;
+    const steps = ["الدفع", "الموافقة", "الاستلام", "الإرجاع"];
+    const at = { pending: 0, paid: 1, active: 2, returning: 3, returned: 4 }[r.status] ?? 0;
+    const track = `<ol class="track" aria-label="مراحل الحجز">${steps.map((s, i) =>
+      `<li class="${i < at ? "done" : i === at ? "current" : ""}"><span class="track-dot"></span><span class="track-label">${s}</span></li>`).join("")}</ol>`;
+    const head = `<div class="rental-head"><h2 class="section-title">${esc(r.toolName)}</h2>${FZ.badge(FZ.STATUS, r.status)}</div>${track}`;
     const summary = `<div class="kv-list">
         ${row("المدة", FZ.planLabel(r.hours))}
         ${row("المبلغ", money(r.amount))}
@@ -476,6 +480,14 @@
     }).join(",");
   }
 
+  // أيقونة بسيطة لكل أداة حسب اسمها
+  function toolIcon(name) {
+    const n = String(name || "");
+    if (/حاسب|calc/i.test(n)) return `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="4" width="30" height="40" rx="6" fill="currentColor" opacity=".14"/><rect x="9" y="4" width="30" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="3"/><rect x="14" y="9" width="20" height="9" rx="2" fill="currentColor"/><g fill="currentColor"><circle cx="17" cy="25" r="2.4"/><circle cx="24" cy="25" r="2.4"/><circle cx="31" cy="25" r="2.4"/><circle cx="17" cy="32" r="2.4"/><circle cx="24" cy="32" r="2.4"/><circle cx="17" cy="39" r="2.4"/><circle cx="24" cy="39" r="2.4"/><rect x="28.6" y="29.6" width="4.8" height="11.8" rx="2.4"/></g></svg>`;
+    if (/كيبل|شحن|cable|type/i.test(n)) return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 40c0-9 6-12 14-12s14-4 14-12V9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><rect x="31" y="2" width="14" height="9" rx="3" fill="currentColor"/><rect x="4" y="36" width="12" height="9" rx="3" fill="currentColor" opacity=".55"/><path d="M26 17l-5 8h5l-2 7 6-9h-5z" fill="#FFC21A"/></svg>`;
+    return `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="12" width="36" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="3"/><path d="M6 20h36" stroke="currentColor" stroke-width="3"/><rect x="19" y="8" width="10" height="6" rx="2" fill="currentColor"/></svg>`;
+  }
+
   function renderTools() {
     const grid = $("toolsGrid");
     const ids = Object.keys(S.tools).sort((a, b) => (S.tools[a].compartment || 0) - (S.tools[b].compartment || 0));
@@ -488,19 +500,20 @@
       const from = plans.length ? plans[0].amount : null;
       const avail = t.status === "available";
       if (mine.has(id)) {
-        return `<div class="tool-card is-off">
-            <div class="tool-info"><h3>${esc(t.name)}</h3><p class="tool-price">لديك حجز لهذه الأداة — تجده بالأعلى ⬆️</p></div>
-          </div>`;
+        return `<article class="tool-card is-mine">
+            <div class="tool-icon">${toolIcon(t.name)}</div>
+            <div class="tool-info"><h3>${esc(t.name)}</h3><p class="tool-note">لديك حجز لهذه الأداة — تجده بالأعلى</p></div>
+          </article>`;
       }
-      return `<div class="tool-card ${avail ? "" : "is-off"}">
+      return `<article class="tool-card ${avail ? "" : "is-off"}">
+          <div class="tool-icon">${toolIcon(t.name)}</div>
           <div class="tool-info">
-            <span class="comp-tag">القسم ${esc(t.compartment)}</span>
+            <div class="tool-meta"><span class="comp-tag">القسم ${esc(t.compartment)}</span>${avail ? "" : FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
             <h3>${esc(t.name)}</h3>
-            <p class="tool-price">يبدأ من: <span>${money(from)} / ${plans.length ? FZ.planLabel(plans[0].hours) : ""}</span></p>
-            ${avail ? "" : `<div class="mt-6">${FZ.badge(FZ.TOOL_STATUS, t.status)}</div>`}
+            <p class="tool-price"><b>${money(from)}</b> <span>/ ${plans.length ? FZ.planLabel(plans[0].hours) : ""}</span></p>
           </div>
-          <button class="btn btn-accent" data-action="select" data-tool="${esc(id)}" ${avail && !blocked ? "" : "disabled"}>احجز الآن</button>
-        </div>`;
+          <button class="btn btn-accent" data-action="select" data-tool="${esc(id)}" ${avail && !blocked ? "" : "disabled"}>احجز</button>
+        </article>`;
     }).join("");
   }
 

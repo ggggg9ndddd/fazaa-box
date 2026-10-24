@@ -9,24 +9,41 @@
     <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
-    <meta name="theme-color" content="#0F2440">
+    <meta name="theme-color" content="#1A5DD6">
+    <meta name="description" content="صندوق فزعة — استأجر آلة حاسبة علمية أو كيبل شحن بالساعة من صندوق ذكي داخل الجامعة.">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="app-container">
+<div class="shell">
 
-    <header>
-        <div class="brand">
-            <span class="brand-logo-plate"><img src="logo.png" alt="فزعة" width="720" height="344"></span>
-            <div class="brand-text">
-                <h1 class="sr-only">صندوق فزعة</h1>
-                <p>فزعتك وقت الزنقة!</p>
+    <aside class="hero" aria-label="عن صندوق فزعة">
+        <div class="hero-inner">
+            <div class="brand">
+                <img class="hero-logo" src="logo.png" alt="فزعة" width="720" height="344">
+                <div class="brand-text">
+                    <h1 class="sr-only">صندوق فزعة</h1>
+                    <p class="hero-tagline">فزعتك وقت الزنقة!</p>
+                </div>
             </div>
-        </div>
-        <div class="box-status" id="boxStatus"><span class="dot"></span><span class="txt">جارٍ التحقق من الصندوق…</span></div>
-    </header>
+            <p class="hero-lead">نسيت الحاسبة قبل الاختبار؟ جوالك على وشك يطفى؟ استأجر أداتك بالساعة من صندوق ذكي داخل الجامعة، بدون ما تنتظر أحد.</p>
 
+            <ol class="how">
+                <li><span class="how-n">1</span><div><b>احجز</b><span>اختر الأداة والمدة</span></div></li>
+                <li><span class="how-n">2</span><div><b>ادفع</b><span>حوّل وارفع الإيصال</span></div></li>
+                <li><span class="how-n">3</span><div><b>استلم</b><span>اكتب رمزك في الصندوق</span></div></li>
+                <li><span class="how-n">4</span><div><b>أرجع</b><span>بنفس الرمز بعد انتهاء المدة</span></div></li>
+            </ol>
+
+            <svg class="hero-cable" viewBox="0 0 400 120" aria-hidden="true" preserveAspectRatio="none">
+                <path d="M-10 92 C 70 92, 90 30, 170 30 S 260 96, 330 70 S 380 30, 412 30" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/>
+            </svg>
+
+            <div class="box-status" id="boxStatus"><span class="dot"></span><span class="txt">جارٍ التحقق من الصندوق…</span></div>
+        </div>
+    </aside>
+
+    <main class="app-container">
     <div class="content">
         <div id="announcement" class="announce" hidden></div>
 
@@ -141,6 +158,7 @@
         </div>
 
     </div>
+    </main>
 </div>
 
 <a id="waContact" class="wa-float" href="#" target="_blank" rel="noopener" aria-label="تواصل معنا عبر واتساب">
