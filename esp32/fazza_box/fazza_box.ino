@@ -240,9 +240,19 @@ void blinkError() {
   for (int i = 0; i < 3; i++) { digitalWrite(STATUS_LED, LOW); delay(150); digitalWrite(STATUS_LED, HIGH); delay(150); }
 }
 
+// حماية من التخمين: بعد 5 رموز غلط تتقفل لوحة الأرقام دقيقتين
+const int MAX_FAILS = 5;
+const unsigned long LOCKOUT_MS = 2UL * 60UL * 1000UL;
+int failCount = 0;
+unsigned long lockedUntil = 0;
+
 void handleKeypad() {
   char key = keypad.getKey();
   if (key == NO_KEY) return;
+  if (lockedUntil && (long)(millis() - lockedUntil) < 0) {
+    Serial.println("[KEY] keypad locked — too many wrong codes, wait");
+    blinkError(); entered = ""; return;
+  }
   if (key == '*') { entered = ""; Serial.println("\n[KEY] cleared"); return; }
   if (key == '#') {
     Serial.println();
@@ -256,7 +266,11 @@ void handleKeypad() {
       Serial.println("[KEY] box is turned OFF from admin panel — denied"); blinkError(); return;
     }
     Serial.println("[KEY] checking code...");
-    if (!processCode(code, now)) { Serial.println("[KEY] ACCESS DENIED"); blinkError(); }
+    if (processCode(code, now)) { failCount = 0; lockedUntil = 0; }
+    else {
+      Serial.println("[KEY] ACCESS DENIED"); blinkError();
+      if (++failCount >= MAX_FAILS) { lockedUntil = millis() + LOCKOUT_MS; failCount = 0; Serial.println("[KEY] keypad LOCKED for 2 minutes"); }
+    }
     return;
   }
   if (key >= '0' && key <= '9' && entered.length() < 8) { entered += key; Serial.print("*"); }
