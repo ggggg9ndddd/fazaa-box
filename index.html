@@ -8,7 +8,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" href="icon.png">
-    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="فزعة">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="theme-color" content="#1A5DD6">
     <meta name="description" content="صندوق فزعة — استأجر آلة حاسبة علمية أو كيبل شحن بالساعة من صندوق ذكي داخل الجامعة.">
     <link rel="stylesheet" href="style.css">
@@ -38,6 +43,18 @@
             <svg class="hero-cable" viewBox="0 0 400 120" aria-hidden="true" preserveAspectRatio="none">
                 <path d="M-10 92 C 70 92, 90 30, 170 30 S 260 96, 330 70 S 380 30, 412 30" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round"/>
             </svg>
+
+            <div class="install" id="installBox" hidden>
+                <button type="button" class="btn btn-install" id="installBtn" hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v9.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 0 0 2h14a1 1 0 1 0 0-2H5z"/></svg>
+                    ثبّت تطبيق فزعة على جوالك
+                </button>
+                <p class="install-hint" id="installHint" hidden>
+                    لتثبيت فزعة كتطبيق على الآيفون: اضغط زر <b>المشاركة</b>
+                    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style="display:inline;vertical-align:-3px"><path fill="currentColor" d="M12 2l4 4-1.4 1.4L13 5.8V15h-2V5.8L9.4 7.4 8 6zM5 10h3v2H6v8h12v-8h-2v-2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1z"/></svg>
+                    في سفاري، ثم <b>«إضافة إلى الشاشة الرئيسية»</b>.
+                </p>
+            </div>
 
             <div class="box-status" id="boxStatus"><span class="dot"></span><span class="txt">جارٍ التحقق من الصندوق…</span></div>
         </div>
@@ -174,5 +191,6 @@
 <script src="firebase-config.js"></script>
 <script src="common.js"></script>
 <script src="app.js"></script>
+<script src="pwa.js"></script>
 </body>
 </html>

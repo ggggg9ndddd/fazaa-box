@@ -463,11 +463,11 @@
           await FZ.db.ref().update(upd);
           FZ.toast("تمت التسوية — يمكن للطالب الاستئجار مجدداً", "success");
         } else if (a === "extend") {
-          const v = prompt("كم ساعة تبي تضيف لموعد الإرجاع؟ (اكتب رقم سالب للتقليل، مثلاً 1 أو 0.5 أو -1)", "1");
+          const v = prompt("كم دقيقة تبي تضيف لموعد الإرجاع؟\nاكتب رقم سالب للتقليل — مثلاً 30 أو 60 أو -59", "60");
           if (v === null) return;
-          const h = Number(v);
-          if (!isFinite(h) || h === 0) throw new Error("اكتب رقم صحيح");
-          const due = (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR)) + Math.round(h * FZ.HOUR);
+          const m = Number(String(v).replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace("−", "-").trim());
+          if (!isFinite(m) || m === 0) throw new Error("اكتب عدد الدقائق (مثلاً 30 أو -59)");
+          const due = (r.dueAt || ((r.startAt || 0) + r.hours * FZ.HOUR)) + Math.round(m * FZ.MIN);
           await FZ.db.ref(`rentals/${id}`).update({ dueAt: due, extendedBy: FZ.auth.currentUser.uid });
           FZ.toast(`موعد الإرجاع الجديد: ${FZ.fmtTime(due)}`, "success");
         } else if (a === "toggleBlock") {
