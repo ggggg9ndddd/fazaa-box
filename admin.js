@@ -8,11 +8,11 @@
   // البيانات الأولية للأدوات (تُكتب عند الضغط على "تهيئة الأدوات"). المبالغ بالبيسة.
   const DEFAULT_TOOLS = {
     calculator: {
-      name: "آلة حاسبة علمية (Casio fx-991)", compartment: 1, status: "available", lateFeePerHour: 300,
+      name: "آلة حاسبة علمية (Casio fx-991)", compartment: 1, status: "available", lateFeePerHour: 1000,
       plans: { h1: { hours: 1, amount: 300 }, h2: { hours: 2, amount: 600 }, h3: { hours: 3, amount: 900 }, day: { hours: 24, amount: 1500 } }
     },
     typec: {
-      name: "كيبل شحن 3 في 1 (Type-C / Lightning / Micro)", compartment: 2, status: "available", lateFeePerHour: 200,
+      name: "كيبل شحن 3 في 1 (Type-C / Lightning / Micro)", compartment: 2, status: "available", lateFeePerHour: 1000,
       plans: { h1: { hours: 1, amount: 200 }, h2: { hours: 2, amount: 400 }, h3: { hours: 3, amount: 600 }, day: { hours: 24, amount: 1000 } }
     }
   };
