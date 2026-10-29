@@ -11,9 +11,9 @@
   const S = {
     user: null, profile: null, state: {},
     tools: {}, active: {},
-    selectedTool: null, history: [], registering: false
+    selectedTool: null, registering: false
   };
-  let userRef = null, historyQuery = null;
+  let userRef = null;
   let lastPhase = "";
 
   // معرّفات الحجوزات النشطة من حالة المستخدم (+ دعم الصيغة القديمة activeRental)
@@ -151,7 +151,6 @@
   // -------------------- حالة المستخدم --------------------
   function detachAll() {
     if (userRef) userRef.off(); userRef = null;
-    if (historyQuery) historyQuery.off(); historyQuery = null;
     syncActive([]);
   }
 
@@ -180,13 +179,6 @@
       renderAll();
     }, err => { FZ.toast(FZ.authError(err), "error"); });
 
-    historyQuery = FZ.db.ref("rentals").orderByChild("uid").equalTo(user.uid).limitToLast(10);
-    historyQuery.on("value", snap => {
-      const list = [];
-      snap.forEach(c => { list.push({ id: c.key, ...c.val() }); });
-      S.history = list.reverse();
-      renderHistory();
-    }, () => {});
   });
 
   // متابعة كل حجز نشط (وطلب الفتح الخاص به) لحظياً
@@ -252,7 +244,6 @@
     renderAlerts();
     renderRental();
     renderTools();
-    renderHistory();
   }
 
   function renderAlerts() {
@@ -548,21 +539,6 @@
     $("step-tools").classList.add("active");
   }
   $("planBack").addEventListener("click", goTools);
-
-  function renderHistory() {
-    const act = activeIds();
-    const list = S.history.filter(h => !act.includes(h.id)).slice(0, 5);
-    if (!list.length) { $("historyPanel").innerHTML = ""; return; }
-    $("historyPanel").innerHTML = `
-      <h2 class="section-title mt-24">طلباتي السابقة</h2>
-      <div class="history">
-        ${list.map(h => `<div class="history-item">
-            <div><b>${esc(h.toolName)}</b><div class="muted small">${FZ.fmtTime(h.createdAt)} · ${FZ.planLabel(h.hours)}</div></div>
-            <div class="text-end">${FZ.badge(FZ.STATUS, h.status)}
-              ${h.lateFee ? `<div class="small danger-text">تأخير: ${money(h.lateFee)}${h.lateFeePaid ? " (مسدّدة)" : ""}</div>` : ""}</div>
-          </div>`).join("")}
-      </div>`;
-  }
 
   // -------------------- الإجراءات --------------------
   document.addEventListener("click", async e => {
