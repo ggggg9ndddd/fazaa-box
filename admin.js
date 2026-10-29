@@ -393,7 +393,7 @@
     $("secHistory").innerHTML = items.length ? `<div class="history">${items.map(r => {
       const p = (S.users[r.uid] && S.users[r.uid].profile) || {};
       return `<div class="history-item">
-          <div><b>${esc(r.toolName)}</b><div class="muted small">${esc(p.name || "")} · ${esc(r.ref)}</div></div>
+          <div><b>${esc(r.toolName)}</b><div class="muted small">${esc(p.name || "")} · ${esc(r.ref)}${r.hiddenByUser ? ` · <span title="الطالب حذفه من قائمته، ويبقى محفوظ هنا">محذوف عند الطالب</span>` : ""}</div></div>
           <div class="text-end">${FZ.badge(FZ.STATUS, r.status)}
             ${r.lateFee ? `<div class="small danger-text">تأخير ${money(r.lateFee)}${r.lateFeePaid ? " ✔" : ""}</div>` : ""}</div>
         </div>`;

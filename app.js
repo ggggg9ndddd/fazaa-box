@@ -180,7 +180,7 @@
       renderAll();
     }, err => { FZ.toast(FZ.authError(err), "error"); });
 
-    historyQuery = FZ.db.ref("rentals").orderByChild("uid").equalTo(user.uid).limitToLast(10);
+    historyQuery = FZ.db.ref("rentals").orderByChild("uid").equalTo(user.uid).limitToLast(30);
     historyQuery.on("value", snap => {
       const list = [];
       snap.forEach(c => { list.push({ id: c.key, ...c.val() }); });
@@ -549,17 +549,29 @@
   }
   $("planBack").addEventListener("click", goTools);
 
+  // الطلب المنتهي فقط يقدر الطالب يخفيه (يبقى ظاهر للمسؤول)
+  const canHide = h => ["returned", "cancelled", "rejected"].includes(h.status) && !(h.lateFee > 0 && !h.lateFeePaid);
+  async function hideRentals(ids) {
+    const upd = {};
+    ids.forEach(id => { upd[`rentals/${id}/hiddenByUser`] = true; });
+    try { await FZ.db.ref().update(upd); FZ.toast("تم الحذف من قائمتك", "success"); }
+    catch (err) { FZ.toast(FZ.authError(err), "error"); }
+  }
+
   function renderHistory() {
     const act = activeIds();
-    const list = S.history.filter(h => !act.includes(h.id)).slice(0, 5);
+    const list = S.history.filter(h => !act.includes(h.id) && !h.hiddenByUser).slice(0, 5);
     if (!list.length) { $("historyPanel").innerHTML = ""; return; }
     $("historyPanel").innerHTML = `
-      <h2 class="section-title mt-24">طلباتي السابقة</h2>
+      <div class="history-head mt-24"><h2 class="section-title">طلباتي السابقة</h2>
+        ${list.some(canHide) ? `<button class="btn-link danger-text" data-action="hideAll">مسح الكل</button>` : ""}</div>
       <div class="history">
         ${list.map(h => `<div class="history-item">
             <div><b>${esc(h.toolName)}</b><div class="muted small">${FZ.fmtTime(h.createdAt)} · ${FZ.planLabel(h.hours)}</div></div>
             <div class="text-end">${FZ.badge(FZ.STATUS, h.status)}
               ${h.lateFee ? `<div class="small danger-text">تأخير: ${money(h.lateFee)}${h.lateFeePaid ? " (مسدّدة)" : ""}</div>` : ""}</div>
+            ${canHide(h) ? `<button class="hist-del" data-action="hide" data-rid="${esc(h.id)}" title="حذف من القائمة" aria-label="حذف الطلب من القائمة">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>` : ""}
           </div>`).join("")}
       </div>`;
   }
@@ -569,6 +581,15 @@
     const btn = e.target.closest("[data-action]");
     if (!btn || btn.disabled) return;
     const a = btn.dataset.action, rid = btn.dataset.rid;
+    if (a === "hide") {
+      if (confirm("حذف هذا الطلب من قائمتك؟")) hideRentals([rid]);
+      return;
+    }
+    if (a === "hideAll") {
+      const ids = S.history.filter(h => !h.hiddenByUser && canHide(h)).map(h => h.id);
+      if (ids.length && confirm(`حذف ${ids.length} طلب من قائمتك؟`)) hideRentals(ids);
+      return;
+    }
     if (a === "select") {
       S.selectedTool = btn.dataset.tool;
       renderPlans();

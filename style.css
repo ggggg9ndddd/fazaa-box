@@ -509,3 +509,11 @@ textarea.form-control { resize: vertical; }
 .btn-install:hover { background: var(--blue-900); }
 .install-hint { font-size: .85rem; color: var(--ink-2); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
 @media (display-mode: standalone) { .install { display: none !important; } }
+
+/* حذف الطلبات السابقة من قائمة الطالب */
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.history-head .section-title { margin: 0; }
+.history-head .btn-link { margin: 0; color: #c62828; }
+.history-item > div:first-child { flex: 1; min-width: 0; }
+.hist-del { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted, #64748b); cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.hist-del:hover, .hist-del:focus-visible { color: #c62828; border-color: #f3b4b4; background: #fff5f5; }

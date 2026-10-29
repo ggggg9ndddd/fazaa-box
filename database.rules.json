@@ -181,6 +181,10 @@
         "lateFee": {
           ".validate": "newData.isNumber() && newData.val() >= 0"
         },
+        "hiddenByUser": {
+          ".write": "auth != null && data.parent().child('uid').val() === auth.uid && newData.val() === true && (data.parent().child('status').val() === 'returned' || data.parent().child('status').val() === 'cancelled' || data.parent().child('status').val() === 'rejected')",
+          ".validate": "newData.isBoolean()"
+        },
         "lateFeePaid": {
           ".validate": "newData.isBoolean()"
         },
