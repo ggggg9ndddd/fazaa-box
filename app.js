@@ -487,8 +487,6 @@
     const mine = new Set(activeList().map(a => a.r.toolId).concat(Object.keys(S.state.activeByTool || {})));
     grid.innerHTML = ids.map(id => {
       const t = S.tools[id];
-      const plans = Object.values(t.plans || {}).sort((a, b) => a.hours - b.hours);
-      const from = plans.length ? plans[0].amount : null;
       const avail = t.status === "available";
       if (mine.has(id)) {
         return `<article class="tool-card is-mine">
@@ -501,7 +499,6 @@
           <div class="tool-info">
             <div class="tool-meta"><span class="comp-tag">القسم ${esc(t.compartment)}</span>${avail ? "" : FZ.badge(FZ.TOOL_STATUS, t.status)}</div>
             <h3>${esc(t.name)}</h3>
-            <p class="tool-price"><b>${money(from)}</b> <span>/ ${plans.length ? FZ.planLabel(plans[0].hours) : ""}</span></p>
           </div>
           <button class="btn btn-accent" data-action="select" data-tool="${esc(id)}" ${avail && !blocked ? "" : "disabled"}>احجز</button>
         </article>`;
